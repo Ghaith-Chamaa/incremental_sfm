@@ -510,6 +510,7 @@ def export_to_colmap(
     
     # --- 2. points3D.txt (modified for RGB strategy) ---
     points3d_lines_buffer = [] 
+    point_rgb_colors = []
 
     num_valid_3d_points = 0
     track_lengths = []
@@ -584,7 +585,7 @@ def export_to_colmap(
             track_lengths.append(current_track_length)
             track_str = " ".join(track_str_parts)
             points3d_lines_buffer.append(f"{colmap_point3d_id} {x_3d} {y_3d} {z_3d} {final_r} {final_g} {final_b} {error} {track_str}\n")
-
+            point_rgb_colors.append([final_r/255, final_g/255, final_b/255])
     with open(os.path.join(output_path, "points3D.txt"), "w") as f_pts3d:
         f_pts3d.write("# 3D point list with one line of data per point:\n")
         f_pts3d.write("#   POINT3D_ID, X, Y, Z, R, G, B, ERROR, TRACK[] as (IMAGE_ID, POINT2D_IDX)\n")
@@ -647,7 +648,7 @@ def export_to_colmap(
             f_img.write(line)
 
     print(f"COLMAP data exported to {output_path} using '{point_color_strategy}' color strategy.")
-
+    return np.array(point_rgb_colors)
 
 def visualize_sfm_open3d(points_3d):
     """
@@ -730,3 +731,109 @@ def save_plotted_matches(img1: np.ndarray, kp1: List[cv2.KeyPoint],
     if show_plot:
         plt.show()
     plt.close()
+
+
+# --- Updated Visualization Function ---
+def visualize_sfm_and_pose_open3d(
+    points_3D: np.ndarray,
+    camera_R_mats: Dict[int, np.ndarray],
+    camera_t_vecs: Dict[int, np.ndarray],
+    K_matrix: np.matrix,
+    image_width: int,
+    image_height: int,
+    frustum_scale: float = 0.3,  # Scale factor for the camera frustum size
+    point_colors: Optional[np.ndarray] = None, # Optional: N_points x 3 array of RGB colors (0-1)
+    camera_color: Tuple[float, float, float] = (0.0, 0.8, 0.0) # Green for cameras
+):
+    """
+    Visualize the 3D sparse point cloud and camera poses using Open3D.
+
+    Parameters:
+    - points_3D: Nx3 NumPy array of 3D points.
+    - camera_R_mats: Dictionary mapping image index to 3x3 rotation matrix.
+    - camera_t_vecs: Dictionary mapping image index to 3x1 translation vector.
+    - K_matrix: 3x3 camera intrinsic matrix.
+    - image_width: Width of the images.
+    - image_height: Height of the images.
+    - frustum_scale: Controls the size of the visualized camera frustums.
+    - point_colors: Optional Nx3 array for point cloud colors (RGB, 0-1 range).
+    - camera_color: RGB tuple for camera frustum color (0-1 range).
+    """
+    if points_3D is None or points_3D.shape[0] == 0:
+        print("No 3D points to visualize.")
+        return
+
+    # 1. Create Point Cloud Geometry
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(points_3D)
+
+    if point_colors is not None and point_colors.shape[0] == points_3D.shape[0]:
+        pcd.colors = o3d.utility.Vector3dVector(point_colors)
+    else:
+        # Default color if not provided (e.g., gray)
+        pcd.colors = o3d.utility.Vector3dVector(
+            np.tile(np.array([0.5, 0.5, 0.5]), (points_3D.shape[0], 1))
+        )
+
+    geometries_to_draw = [pcd]
+
+    fx = K_matrix[0, 0]
+    fy = K_matrix[1, 1]
+    cx = K_matrix[0, 2]
+    cy = K_matrix[1, 2]
+
+    z_plane = frustum_scale # Arbitrary depth for the frustum base
+    x_ndc_corners = [(0 - cx) / fx, (image_width - cx) / fx, (image_width - cx) / fx, (0 - cx) / fx]
+    y_ndc_corners = [(0 - cy) / fy, (0 - cy) / fy, (image_height - cy) / fy, (image_height - cy) / fy]
+
+    # Points in camera's local coordinate system:
+    # Point 0: Camera optical center (apex of the pyramid)
+    cam_points_local = [np.array([0, 0, 0])]
+    # Points 1-4: Corners of the frustum base
+    for i in range(4):
+        cam_points_local.append(np.array([x_ndc_corners[i] * z_plane, y_ndc_corners[i] * z_plane, z_plane]))
+
+    cam_points_local = np.array(cam_points_local)
+
+    # Lines for the pyramid: connect apex (0) to each base corner (1-4)
+    # and connect base corners to form the square base (1-2, 2-3, 3-4, 4-1)
+    lines = [
+        [0, 1], [0, 2], [0, 3], [0, 4],  # Apex to corners
+        [1, 2], [2, 3], [3, 4], [4, 1]   # Base edges
+    ]
+
+    for img_idx in camera_R_mats.keys():
+        if img_idx not in camera_t_vecs:
+            print(f"Warning: Missing translation for camera {img_idx}. Skipping.")
+            continue
+        R = camera_R_mats[img_idx]
+        t = camera_t_vecs[img_idx].reshape(3, 1)        
+
+        # Camera rotation in world (orientation)
+        R_cam_in_world = R.T
+        # Camera position in world (center)
+        t_cam_in_world = -R.T @ t
+
+        frustum_points_world = []
+        for p_local in cam_points_local:
+            p_world = R_cam_in_world @ p_local.reshape(3,1) + t_cam_in_world
+            frustum_points_world.append(p_world.ravel())
+        
+        frustum_points_world = np.array(frustum_points_world)
+
+        # Create LineSet for the frustum
+        line_set = o3d.geometry.LineSet()
+        line_set.points = o3d.utility.Vector3dVector(frustum_points_world)
+        line_set.lines = o3d.utility.Vector2iVector(lines)
+        line_set.colors = o3d.utility.Vector3dVector([camera_color for _ in range(len(lines))])
+        
+        geometries_to_draw.append(line_set)
+
+    # Visualize
+    o3d.visualization.draw_geometries(
+        geometries_to_draw,
+        window_name="SfM Point Cloud and Cameras",
+        point_show_normal=False,
+        width=1000,
+        height=800
+    )
