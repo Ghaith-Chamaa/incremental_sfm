@@ -393,7 +393,6 @@ class ReconstructionPipeline:
         if success and rvec is not None and tvec is not None:
             R, _ = cv2.Rodrigues(rvec)
             print(f"solvePnPRansac successful. Inliers: {len(inliers) if inliers is not None else 'N/A'}/{len(object_points)}")
-            print('rvec:\n', rvec, '\n\ntvec:\n', tvec)
             return R, tvec
         else:
             print("solvePnPRansac failed.")
@@ -492,4 +491,133 @@ class ReconstructionPipeline:
         perc_inliers = sum(inliers)/len(inliers)
 
         return errors, projpts, avg_err, perc_inliers
+    
+    
+    def get_pair_score(self, unresected_idx, resected_idx, matches, keypoints, 
+                       points3d_with_views, img_adjacency):
+        """
+        Calculates a score for pairing an unresected image with a resected one.
+        Higher score is better.
+        """
+        score = 0
+        
+        # Check adjacency (basic requirement)
+        # Ensure indices are ordered correctly for accessing matches if it's upper/lower triangular
+        idx1, idx2 = self.get_idxs_in_correct_order(unresected_idx, resected_idx)
+        if not self.images_adjacent(idx1, idx2, img_adjacency): # or use your direct matches check
+             return -1 # Invalid pair
+
+        current_matches = matches[idx1][idx2] if idx1==unresected_idx else matches[idx2][idx1] # Adjust if matches isn't symmetric
+        if not current_matches: # Or check matches[idx1][idx2] directly if it's an upper triangular matrix
+            # If your 'matches' is upper triangular (matches[i][j] where i < j)
+            # you'll need to ensure you access it correctly.
+            # For example:
+            # if unresected_idx < resected_idx:
+            #     actual_match_list = matches[unresected_idx][resected_idx]
+            # else:
+            #     actual_match_list = matches[resected_idx][unresected_idx] # or however you store transposed matches
+            # For simplicity, assuming self.matches[i][j] exists and is symmetric or handled by get_idxs_in_correct_order
+            # The `get_aligned_kpts` already handles the i<j logic for matches typically.
             
+            # Check direct match count using the structure of your `self.matches`
+            # This part needs to align with how `self.matches` is structured (symmetric, upper triangular)
+            # For an upper triangular `self.matches[i][j]` where i < j:
+            u_idx, r_idx = min(unresected_idx, resected_idx), max(unresected_idx, resected_idx)
+            if not self.matches[u_idx][r_idx]:
+                 return -1
+
+
+        # Factor 1: Number of matches between this specific pair
+        # Again, careful with indexing self.matches
+        u_idx, r_idx = min(unresected_idx, resected_idx), max(unresected_idx, resected_idx)
+        num_direct_matches = len(self.matches[u_idx][r_idx])
+        score += num_direct_matches * 1.0 # Weight for direct matches
+
+        # Factor 2: Number of existing 3D points visible in unresected_idx that are also seen by resected_idx
+        # This is essentially what get_correspondences_for_pnp does.
+        # For a simpler score, we can just use the number of direct matches from img_adjacency
+        # or rely on a more detailed check if performance allows.
+        
+        # Example: Give a bonus if the resected_idx is "central" or highly connected
+        # (This is a placeholder for more sophisticated heuristics)
+        # score += len(resected_imgs_seeing_this_resected_idx) * 0.1 
+        
+        return score
+
+    def next_img_pair_to_grow_reconstruction_scored(self, n_imgs, resected_imgs, unresected_imgs, 
+                                                  img_adjacency, matches, keypoints, points3d_with_views):
+        """
+        Selects the next unresected image and its best resected partner based on a scoring system.
+        """
+        if not unresected_imgs:
+            # This case should be caught by the while loop in main.py
+            return None, None, False 
+
+        best_unresected_idx = -1
+        best_resected_partner_idx = -1
+        highest_score = -1
+        chosen_prepend = False # Default, can be adjusted by more complex logic if needed
+
+        # Iterate over all unresected images
+        for unres_idx in unresected_imgs:
+            # For each unresected image, find its best partner among the resected images
+            current_best_partner_for_unres = -1
+            current_highest_partner_score = -1
+
+            for res_idx in resected_imgs:
+                if unres_idx == res_idx: # Should not happen if lists are managed properly
+                    continue
+                
+                # Ensure the pair is actually connected by matches
+                # Your get_idxs_in_correct_order and images_adjacent will be useful
+                # Or directly check self.matches using correct indexing
+                u_idx_check, r_idx_check = min(unres_idx, res_idx), max(unres_idx, res_idx)
+                if not self.matches[u_idx_check][r_idx_check] or len(self.matches[u_idx_check][r_idx_check]) == 0 :
+                    continue # No direct matches, skip this resected partner
+
+                # Simplified score: number of matches. More complex scores can be used.
+                # This score could also consider the number of shared 3D points for PnP.
+                
+                # Let's use a simplified score: number of 2D matches between unres_idx and res_idx
+                # This requires careful indexing of self.matches, assuming it's upper triangular
+                # (i.e., self.matches[i][j] where i < j)
+                
+                idx_A, idx_B = min(unres_idx, res_idx), max(unres_idx, res_idx)
+                score = len(self.matches[idx_A][idx_B])
+                
+                # Optionally, add a bonus for resected images that are well-established (e.g., see many 3D points)
+                # Or for pairs that offer a good baseline for triangulation.
+
+                if score > current_highest_partner_score:
+                    current_highest_partner_score = score
+                    current_best_partner_for_unres = res_idx
+            
+            # If this unresected image found a good partner and its score is the best so far
+            if current_best_partner_for_unres != -1 and current_highest_partner_score > highest_score:
+                highest_score = current_highest_partner_score
+                best_unresected_idx = unres_idx
+                best_resected_partner_idx = current_best_partner_for_unres
+        
+        if best_unresected_idx != -1:
+            # Basic prepend logic (can be made more sophisticated)
+            # For example, if best_unresected_idx is numerically smaller than the first resected image, prepend.
+            if resected_imgs and best_unresected_idx < resected_imgs[0]:
+                 chosen_prepend = True
+            else:
+                 chosen_prepend = False
+            print(f"Scored selection: Unresected {best_unresected_idx} with Resected {best_resected_partner_idx} (Score: {highest_score})")
+            return best_resected_partner_idx, best_unresected_idx, chosen_prepend
+        else:
+            # No suitable pair found, this might mean reconstruction cannot proceed with current unresected images.
+            # main.py should handle this (e.g., by breaking the loop if unresected_imgs becomes empty).
+            print("Warning: No suitable image pair found by next_img_pair_to_grow_reconstruction_scored.")
+            if unresected_imgs: # If still images left, try to pick one to allow main.py to remove it if it fails
+                # Fallback: pick the first available unresected and a random resected one
+                # This is a very basic fallback.
+                unres_fallback = unresected_imgs[0]
+                res_fallback = random.choice(resected_imgs) if resected_imgs else None
+                if res_fallback is not None:
+                    print(f"Fallback selection: Unresected {unres_fallback} with Resected {res_fallback}")
+                    return res_fallback, unres_fallback, False 
+            return None, None, False # Signal failure to find a pair
+

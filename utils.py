@@ -495,7 +495,7 @@ def export_to_colmap(
         f_cam.write("# Camera list with one line of data per camera:\n")
         f_cam.write("#   CAMERA_ID, MODEL, WIDTH, HEIGHT, PARAMS[]\n")
         f_cam.write(f"# Number of cameras: 1\n")
-        
+
         cam_id = 1 
         model = "PINHOLE"
         width = image_width
@@ -507,7 +507,6 @@ def export_to_colmap(
         f_cam.write(f"{cam_id} {model} {width} {height} {fx} {fy} {cx} {cy}\n")
 
     colmap_img_id_map = {py_idx: col_idx for col_idx, py_idx in enumerate(sorted(reconstructed_R_mats.keys()), 1)}
-    
     # --- 2. points3D.txt (modified for RGB strategy) ---
     points3d_lines_buffer = [] 
     point_rgb_colors = []
