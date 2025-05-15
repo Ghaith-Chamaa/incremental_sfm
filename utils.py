@@ -286,7 +286,33 @@ def get_images(base_path, dataset_path, type_="color"):
             img_path = os.path.join(dataset_path, filename)
             if type_ == "color":
                 image = cv2.imread(img_path)
-            else:
+            elif type_ == "gray":
                 image = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
+            else:
+                raise ValueError("Invalid image type. Choose 'color' or 'gray'.")
             images.append(image)
     return images
+
+
+def get_sift_features(image: np.ndarray) -> Tuple[List[cv2.KeyPoint], np.ndarray]:
+    """
+    Detects keypoints and computes descriptors using SIFT (Scale-Invariant Feature Transform).
+
+    This function uses the SIFT algorithm to detect keypoints in an image and compute
+    their corresponding descriptors.  SIFT is a robust feature detection algorithm that
+    is invariant to scale, rotation, and some changes in viewpoint.
+
+    Args:
+        image: The input image (NumPy array, typically grayscale or color).
+
+    Returns:
+        A tuple containing:
+            - keypoints: A list of cv2.KeyPoint objects, where each KeyPoint represents
+                         a detected keypoint (location, size, orientation, etc.).
+            - descriptors: A NumPy array of shape (N, 128) containing the SIFT descriptors
+                           for the detected keypoints. N is the number of keypoints.
+                           Each row is a 128-dimensional vector representing the descriptor.
+    """
+    sift = cv2.SIFT_create()  # Create a SIFT object.
+    keypoints, descriptors = sift.detectAndCompute(image, None)  # Detect and compute.
+    return keypoints, descriptors  # Return the keypoints and descriptors.
