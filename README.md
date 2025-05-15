@@ -1,213 +1,220 @@
-# incremental_sfm_vibot
+# Incremental Structure from Motion (SfM) Project
 
-# Incremental Structure from Motion (SfM) for 3D Reconstruction: A Master's Semester Project Guide
----
-## **1. Introduction**
-
-Structure from Motion (SfM) reconstructs 3D scenes from 2D image sequences by estimating camera poses and 3D point geometry. This project focuses on **incremental SfM**, where the reconstruction grows progressively by adding images one by one. Students will implement a full pipeline, from image acquisition to 3D reconstruction, while exploring theoretical foundations and research challenges.
+This repository implements an **Incremental Structure from Motion (SfM)** pipeline for 3D scene reconstruction from a dataset of 2D images. The pipeline extracts 3D point clouds and camera poses by leveraging feature matching, epipolar geometry, triangulation, and bundle adjustment. This README provides a detailed explanation of the theory, methodology, results, discussion, and instructions for running the code.
 
 ---
-## **2. Project Overview**
 
-### **Objective**
-
-Develop an incremental SfM pipeline to reconstruct a 3D point cloud of an object using either:
-
-1. **Custom Dataset**: Images captured via smartphone (requires camera calibration).
-2. **Existing Dataset**: Pre-calibrated datasets (e.g., Middlebury Temple Ring dataset).
-
-### **Key Components**
-
-1. **Camera Calibration** (*Conditional*): Required only for custom datasets.
-2. **Feature Detection & Matching**: Establish correspondences across images.
-3. **Initial Reconstruction**: Recover camera poses and triangulate initial 3D points.
-4. **Incremental Expansion**: Add new cameras via PnP, triangulate points, and refine via bundle adjustment.
-5. **Colorization** (*Optional*): Assign RGB values to 3D points for enhanced visualization.
+## Table of Contents
+1. [Introduction](#introduction)
+2. [Theory](#theory)
+3. [Methodology](#methodology)
+4. [Results](#results)
+5. [Discussion](#discussion)
+6. [How to Run the Code](#how-to-run-the-code)
+7. [References](#references)
 
 ---
-## **3. Theoretical Foundations**
 
-### **3.1 Camera Calibration**
-**Theory**:
-Camera calibration estimates the **intrinsic matrix** $K$ and **distortion coefficients** to correct lens distortion. The intrinsic matrix is:
+## Introduction
+
+Structure from Motion (SfM) is a photogrammetric technique used to reconstruct 3D scenes from a set of 2D images. The incremental SfM approach builds the 3D model progressively by initializing reconstruction with a pair of images and incrementally adding more images and 3D points. This project uses a dataset of **100 images** (configurable) and assumes a known camera calibration matrix to perform feature extraction, matching, triangulation, and bundle adjustment for accurate 3D reconstruction.
+
+---
+
+## Theory
+
+### Structure from Motion Overview
+SfM estimates 3D structure and camera motion from a sequence of 2D images by exploiting the geometric relationships between images. The pipeline involves:
+- **Feature Extraction and Matching**: Identifying and matching keypoints across images to establish correspondences.
+- **Epipolar Geometry**: Using the fundamental matrix to filter outliers and build connectivity between images.
+- **Triangulation**: Computing 3D points from 2D correspondences.
+- **Perspective-n-Point (PnP)**: Estimating camera poses for new images.
+- **Bundle Adjustment (BA)**: Optimizing camera parameters and 3D points to minimize reprojection errors.
+
+### Key Concepts
+1. **Lowe's Ratio Test**: For keypoint matching, the ratio of distances between the best and second-best matches is computed. A match is reliable if the ratio is below a threshold (e.g., 0.75), ensuring high confidence in the correspondence.
+2. **Fundamental Matrix**: A 3x3 matrix (rank 2) that enforces epipolar constraints to filter outlier matches. It relates corresponding points in two images via the epipolar geometry.
+3. **Epipolar Graph**: An adjacency matrix representing image pairs with sufficient good matches, where edges are weighted by the number of matches.
+4. **Triangulation**: Computes 3D points from 2D correspondences using camera poses and the calibration matrix.
+5. **PnP**: Estimates the extrinsic camera parameters (rotation and translation) of a new image given 2D-3D correspondences and the calibration matrix.
+6. **Bundle Adjustment**: A non-linear least squares optimization that minimizes reprojection errors by refining camera poses and 3D point coordinates.
+
+### Mathematical Formulation
+The bundle adjustment objective is to minimize the reprojection error:
 
 $$
-
-K = \begin{bmatrix}
-
-f_x & 0 & c_x \\
-
-0 & f_y & c_y \\
-
-0 & 0 & 1
-
-\end{bmatrix}
-
+E(\{R_i, T_i\}_{i=1}^m, \{X_j\}_{j=1}^N) = \sum_{i=1}^m \sum_{j=1}^N \theta_{ij} \left\| \tilde{x}_{ji} - \pi(R_i, T_i, X_j) \right\|^2
 $$
 
-**Procedure**:
-- **Custom Dataset**:
-	1. Capture 8-10 images of a checkerboard.
-	2. Use OpenCV’s `cv2.findChessboardCorners` and `cv2.calibrateCamera` to compute $K$.
-	
-- **Existing Dataset**:
-	- Use the provided $K$ and omit distortion correction.
-	
-**Research Challenges**:
-- Handling calibration for datasets with varying intrinsics.
+Where:
 
----
-### **3.2 Feature Detection & Matching**
+- $(R_i, T_i)$: Rotation and translation of camera $i$.
+- $X_j$: 3D point $j$.
+- $\tilde{x}_{ji}$: Observed 2D keypoint in image $i$ for point $j$.
+- $\pi$: Perspective projection function.
+- $\theta_{ij}$: Binary indicator (1 if point $j$ is visible in image $i$, 0 otherwise).
 
-**Theory**:
-- **Feature Detection**: Identify stable keypoints (e.g., SIFT, ORB).
-- **Feature Matching**: Establish correspondences using nearest-neighbor search and outlier rejection.
-
-**Mathematics**:
-- **Fundamental Matrix** $F$: For matches $(x_i, x_j)$, $x_j^T F x_i = 0$.
-- **Lowe’s Ratio Test**:
-$$ \frac{\|d_{query} - d_{train}^{(1)}\|}{\|d_{query} - d_{train}^{(2)}\|} < 0.7 $$
-
-**Implementation**:
-
-1. Detect features using `cv2.SIFT_create()`.
-2. Match descriptors with `cv2.BFMatcher`.
-3. Filter outliers using RANSAC and `cv2.findFundamentalMat()`.
----
-### **3.3 Initial Reconstruction**
-
-**Theory**:
-Select an initial image pair with sufficient **baseline** (large relative translation/rotation) to triangulate stable 3D points.
-**Mathematics**:
-1. Compute the **essential matrix** $E$:
-$$ E = K^T F K $$
-2. Decompose $E$ into $R$ and $t$ via SVD.
-
-**Implementation**:
-1. Validate solutions using **cheirality** (positive depth) via `cv2.recoverPose()`.
-2. Triangulate points using `cv2.triangulatePoints()`.
----
-### **3.4 Incremental Camera Registration (PnP)**
-
-**Theory**:
-For each new image, estimate its pose using 3D-2D correspondences (**Perspective-n-Point**).
-
-**Mathematics**:
-
-$$ \min_{R, t} \sum_i \|x_i - \pi(K(RX_i + t))\|^2 $$
-**Implementation**:
-
-1. Use RANSAC with `cv2.solvePnPRansac()`.
-2. Convert rotation vector to matrix via `cv2.Rodrigues()`.
----
-### **3.5 Triangulation & Bundle Adjustment**
-
-**Theory**:
-- **Triangulation**: Solve $x_i = P_i X$, $x_j = P_j X$ via SVD.
-- **Bundle Adjustment**: Minimize reprojection error:
-$$ \min_{\{R_i, t_i, X_j\}} \sum_{i,j} \|x_{ij} - \pi(K(R_i X_j + t_i))\|^2 $$
-
-  
-**Implementation**:
-1. Use `cv2.triangulatePoints()` for linear triangulation.
-2. Refine with `scipy.optimize.least_squares()` or Ceres/g2o.
-
-  
+The Jacobian matrix for BA is sparse, with non-zero blocks corresponding to camera parameters $(A_{ijk})$ and 3D points $(B_{ijk})$.
 
 ---
 
-  ### **3.6 Colorization** (*Optional*)
+## Methodology
 
-**Theory**:
-Assign RGB values to 3D points by projecting them back to source images.
+The SfM pipeline is divided into three main scripts: **matching**, **reconstruction**, and **bundle adjustment**. Below is a detailed breakdown of each step.
 
-**Mathematics**:
-- For a 3D point $X$, project to image $i$:
-$$ x_i = \pi(K[R_i | t_i]X) $$
-- Average colors from visible views.
+### 1. Dataset and Calibration
+- **Dataset**: The pipeline processes a dataset of **100 images**. The number of images can be configured in the script.
 
-**Implementation**:
-1. Use `cv2.projectPoints()` to map 3D points to 2D coordinates.
-2. Sample RGB values and blend across views.
+- **Calibration Matrix**: The camera intrinsic parameters (focal length, principal point, etc.) are assumed known and provided as a 3x3 matrix $K$. Example:
 
-**Research Challenges**:
+  $$
+  K = \begin{bmatrix}
+  f_x & 0 & c_x \\
+  0 & f_y & c_y \\
+  0 & 0 & 1
+  \end{bmatrix}
+  $$
 
-- Handling occlusions and lighting variations.
----
-## **4. Deliverables**
+### 2. Matching Script
+The matching script establishes correspondences between image pairs:
+1. **Feature Extraction**: Extract keypoints and descriptors (e.g., SIFT) from all images.
+2. **All-to-All Matching**: Perform k-nearest neighbor (k-NN) matching between descriptors of all image pairs. For each pair \(i, j\), compute a list of good matches based on Lowe's ratio test (threshold = 0.75).
+3. **Outlier Filtering**: Use the fundamental matrix \(F\) to filter outliers. The fundamental matrix enforces epipolar constraints, ensuring geometric consistency. Matches satisfying $\text{rank}(F) = 2$ are retained.
+4. **Epipolar Graph Construction**: Build an adjacency matrix (upper triangular) where vertices are images, and edges represent pairs with sufficient good matches. Edge weights are the number of matches. This is referred to as the epipolar graph [Fusiello, P131].
 
-### **4.1 Code Implementation**
+The output is a 3D matrix ($n \times n \times m$) where:
+- $n$: Number of images.
+- $m$: Number of good matches for a given image pair.
 
-1. **Feature Matching**: Detect SIFT/ORB features and filter outliers.
-2. **Initial Reconstruction**: Compute $E$, recover $R/t$, triangulate points.
-3. **Incremental SfM**: Add ≥5 new cameras via PnP and triangulate points.
-4. **Colorization** (*Optional*): Assign RGB values to 3D points.
-5. **Camera Calibration** (*Conditional*): Only for custom datasets.
+### 3. Reconstruction Script
+The reconstruction script performs incremental 3D reconstruction [Fusiello, P144]:
+1. **Initial Pair Selection**: Select the best image pair for initial triangulation based on:
+   - **Sufficient Translation**: Ensures triangulation stability [Geiger, P33].
+   - **High Number of Matches**: Balances translation and feature correspondence count. Matches are normalized as percentages to avoid hardcoding thresholds.
+2. **Initial Triangulation**: Use the selected image pair to compute initial 3D points via triangulation. The function `get_aligned_kpts` ensures aligned keypoint indices for consistent access to matched keypoints across images.
+3. **Incremental Reconstruction**:
+   - For each unresected image, use resected images (those already used in triangulation) to estimate the camera pose via PnP [Stachniss].
+   - PnP requires at least 3 2D-3D correspondences and the calibration matrix to solve for 6 unknowns (3 rotations, 3 translations).
+   - Add new 3D points from the unresected image to the point cloud via triangulation.
+   - The `Point3DWithViews` class tracks 3D points, their 2D origins, and the image pairs from which they were triangulated.
+   - The `get_correspondences_for_pnp` function returns index aligned lists of 3D and 2D points to be used for PnP. For each 3D point check if it is seen by the resected image, if so check if there is a match for it between the resected and unresected image. If so that point will be used in PnP. Also keeps track of matches that do not have associated 3D points, and therefore need to be triangulated.
 
-### **4.2 Report**
 
-1. **Mathematical Formulations**: Document mathematical formulations, implementation choices, and challenges.
-2. **Calibration Analysis**:
-	- Custom dataset: Explain calibration steps.
-3. **Results**: Reprojection errors, point cloud visualizations, and camera trajectories.
+### 4. Bundle Adjustment Script
+Bundle adjustment (BA) refines the reconstruction by minimizing reprojection errors [Cremers P05, Fusiello P167]:
+1. **Monitoring**: Track PnP inlier percentage and reprojection error. If either is too low, trigger BA.
+2. **Optimization**: Solve the non-linear least squares problem using solvers that leverage the sparse Jacobian matrix. 
 
-### **4.3 Visualization**
+The Jacobian consists of:
+   - $A_{ijk}$: is the matrix of the partial derivatives of the residual of the point \(j\) in frame \(i\) versus frame orientation \(k\), i.e. Partial derivatives of residuals w.r.t. camera parameters.
+   
+   $$
+   A_{ijk} = \frac{\partial \tilde{\eta}(P_i \mathbf{M}^j)}{\partial \mathbf{g}_k^\top}
+   $$
 
-1. Generate a **3D point cloud** in PLY/XYZ format.
-2. Visualize camera poses and trajectories using Open3D.
-3. **Colorized Cloud** (*Optional*): Include RGB values for bonus marks.
----
-## **5. Grading Scheme**
+   - $B_{ijk}$: is the matrix of the partial derivatives of the residual of the point \(j\) in the frame \(i\) with respect to the coordinates of the point \(k\), i.e. Partial derivatives w.r.t. 3D point coordinates.
 
-**Total Marks: 20**
+   $$
+   B_{ijk} = \frac{\partial \tilde{\eta}(P_i \mathbf{M}^j)}{\partial \tilde{\mathbf{M}}_k^\top}
+   $$
 
-| **Component**                 | **Criteria**                                                                                  | **Marks**  | **Bonus Marks**               |
-|--------------------------------|--------------------------------------------------------------------------------------------|------------|-------------------------------|
-| **1. Camera Calibration**      | Custom dataset: Calibrate intrinsics $K$                                                   | -          | **2**                         |
-| **2. Feature Detection & Matching** | Detect SIFT/ORB features, match with Lowe’s ratio test, and filter outliers via $F$-matrix. | **2**      | -                             |
-| **3. Initial Reconstruction**  | Compute $E$, decompose $R/t$, validate via cheirality, and triangulate initial points.     | **3**      | -                             |
-| **4. Incremental Expansion**   | Register ≥5 new cameras via PnP (RANSAC) and triangulate new points.                        | **3**      | -                             |
-| **5. Bundle Adjustment (BA)**  | Implement BA to refine poses/points and analyze reprojection error reduction.              | **4**      | **+3** for using Ceres/g2o    |
-| **6. Visualization**           | Submit 3D point cloud, camera trajectory visualization.                                    | **3**      | -                             |
-| **7. Report and Presentation** | A detailed technical report along with a presentation.                                    | **3 + 2**  | -                             |
-| **Bonus Tasks**                | - **Colorization**: Assign RGB values to points.<br>- **Custom Dataset**: 30+ images.<br>- **Loop Closure**: Global refinement. | -          | **+1 per task** (Max +3) |
+3. **Sparsity Exploitation**: It is easy to see that $A_{ijk} = 0$ for all $i \ne k$ and $B_{ijk} = 0$ for all $j \ne k$. Hence, the Jacobian matrix has a sparse block structure. In the implementation, we take advantage of this sparsity by using the camera observation indices to activate only the specific camera that made the corresponding 2D–3D observation reducing computational cost.
 
-### **Notes**:
+The Jacobian matrix has a sparse block structure, where each observation only affects one camera (orientation) and one 3D point (structure):
 
-1. **Bonus Marks**: Up to **+3** for advanced tasks.
-2. **Penalties**:
-	- Incomplete code per section: **-2 marks**.
-	- Missing visualization: **-1 mark**.
+$$
+\begin{pmatrix}
+A_{111} &         &         & \big| & B_{111} &         &        &        \\
+A_{121} &         &         & \big| &        & B_{122} &        &        \\
+\vdots  &         &         & \big| &        &         &        & \vdots \\
+A_{1n_1}&         &         & \big| &        &         &        & B_{1nn} \\
+        & A_{212} &         & \big| & B_{211} &        &        &        \\
+        & A_{222} &         & \big| &        & B_{222} &        &        \\
+        & \vdots  &         & \big| &        &         &        & \vdots \\
+        & A_{2n_2}&         & \big| &        &         &        & B_{2nn} \\
+\cdots  & \cdots  & \ddots  & \big| & \cdots & \cdots  & \ddots & \cdots \\
+        &         & A_{m1m} & \big| & B_{m11} &         &        &        \\
+        &         & A_{m2m} & \big| &         & B_{m22} &        &        \\
+        &         & \vdots  & \big| &         &         & \ddots &        \\
+        &         & A_{mn_m m} & \big| &     &         &        & B_{mnn}
+\end{pmatrix}
+$$
+## Results
 
-  
+The pipeline produces:
+- **3D Point Cloud**: A sparse set of 3D points representing the scene.
+- **Camera Poses**: Extrinsic parameters (rotation and translation) for each image.
+- **Reprojection Error**: Typically reduced to below 1 pixel after bundle adjustment.
+- **Performance**: The pipeline successfully reconstructs scenes with 46 images in reasonable time (dependent on hardware and dataset complexity).
 
----
-## **6. Advanced Topics for Research**
-
-1. **Robust Initialization**: Homography for planar scenes.
-2. **Scalable BA**: Keyframe-based optimization.
-3. **Deep Learning**: Replace SIFT with SuperPoint features.
-
----
-## **7. Resources**
-
-1. **Datasets**:
-	- Middlebury Temple Ring: https://vision.middlebury.edu/mview/data/
-2. **Libraries**: OpenCV, SciPy, Ceres Solver, Open3D.
-3. **Books**: *Multiple View Geometry in Computer Vision* (Hartley & Zisserman).
-
----
-
-## **8. Steps to run**
-
-1. **Datasets**:
-	- Make sure youh have the folder named "datasets" inside the working directory and has one of the datasets from "Middlebury Temple Ring: https://vision.middlebury.edu/mview/data/"
-2. **Conda virtual environment**: You need to install conda and then create a virtiual environment:
-	- conda env create -n conda_venv_name -f environment.yml
-	- conda activate conda_venv_name
-	- conda install -c conda-forge libstdcxx-ng
-
-3. **Run main.py**: Set the local variables "imgset" and "n_imgs" according to the dataset you are using and run the following command inside the activtae dconda environment
-	- python3 main.py
+Sample result:
+TODO
 
 ---
+
+## Discussion
+
+### Strengths
+- **Robust Matching**: Lowe's ratio and fundamental matrix filtering ensure high-quality correspondences.
+- **Incremental Approach**: Scales well with the number of images by adding one image at a time.
+- **Bundle Adjustment**: Significantly improves accuracy by optimizing all parameters jointly.
+- **Flexible Initialization**: The percentage-based pair selection avoids hardcoding thresholds.
+
+### Limitations
+- **Computational Cost**: All-to-all matching and BA are computationally expensive for large datasets.
+- **Calibration Dependency**: Requires a known calibration matrix, which may not always be available.
+- **Initialization Sensitivity**: Poor initial pair selection can lead to unstable triangulation.
+- **Outlier Sensitivity**: Despite filtering, some outliers may persist in challenging datasets.
+
+### Future Improvements
+- Implement parallel processing for feature matching to reduce runtime.
+- Add automatic calibration estimation for datasets without known intrinsics.
+- Explore deep learning-based feature matching for better robustness.
+
+---
+
+## How to Run the Code
+
+### Prerequisites
+- **Python 3.8**
+- **Libraries**:
+  - `numpy`: Matrix operations.
+  - `opencv-python`: Feature extraction, matching, and fundamental matrix estimation.
+  - `scipy`: Sparse matrix handling for BA.
+  - `open3d`: Visualization of results.
+- Install dependencies:
+  ```bash
+  pip install numpy opencv-python scipy open3d
+  ```
+
+### Directory Structure
+```
+incremental_sfm_project/
+├── datasets/
+│   ├── templering/        # Dataset images (e.g., image001.jpg, ...)
+├── matching.py            # Feature extraction and matching
+├── reconstruction.py      # Incremental SfM
+├── bundle_adjustment.py   # Bundle adjustment
+├── README.md              # This file
+└── main.py                # Main script to run the pipeline
+```
+
+### Steps to Run
+1. **Prepare the Dataset**:
+   - Place your images in `datasets/templering/`.
+   - Provide the calibration matrix in main.py.
+   - Provide Number of images to process in main.py.
+   - Provide  Path to image directory in main.py.
+2. **Run the Pipeline**:
+   ```bash
+   python main.py
+   ```
+
+3. **Output**:
+   - 3D point cloud saved as `output/point_cloud.ply`.
+
+## References
+1. Fusiello, A. *Lecture Notes on Computer Vision: 3D Reconstruction Techniques*. University of Udine, IT.
+2. Geiger, A. *Lecture Notes on Computer Vision, Lecture 3 – Structure-from-Motion*. Autonomous Vision Group, University of Tübingen.
+3. Stachniss, C. *Lecture Notes on Projective 3-Point (P3P) Algorithm / Spatial Resection*. University of Bonn.
+4. Cremers, D. *Lecture Notes on Computer Vision II: Multiple View Geometry*. Technical University of Munich.
