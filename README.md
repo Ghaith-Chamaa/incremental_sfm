@@ -625,7 +625,7 @@ The pipeline produces:
   - `open3d`: Visualization of results.
 - Install dependencies:
   ```bash
-  pip install numpy opencv-python scipy open3d
+  pip install -r requirements.txt
   ```
 
 ### Directory Structure
