@@ -5,6 +5,7 @@ import numpy as np
 from typing import Tuple, List
 import os
 import glob
+from sklearn.cluster import KMeans
 
 
 def visualize_point_cloud(points_3D):
@@ -407,3 +408,9 @@ def get_sift_features(image: np.ndarray) -> Tuple[List[cv2.KeyPoint], np.ndarray
     sift = cv2.SIFT_create()  # Create a SIFT object.
     keypoints, descriptors = sift.detectAndCompute(image, None)  # Detect and compute.
     return keypoints, descriptors  # Return the keypoints and descriptors.
+
+
+def build_histogram(descriptor, kmeans):
+    labels = kmeans.predict(descriptor)
+    histogram, _ = np.histogram(labels, bins=np.arange(kmeans.n_clusters + 1))
+    return histogram / np.sum(histogram)  # Normalize histogram
