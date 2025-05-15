@@ -531,6 +531,10 @@ The pipeline produces:
 
     *Caption: Preliminary reconstruction from a limited number of input images.*
 
+*   **Custom Datasets (COLMAP Visualization):**
+    ![](assets/gifs/unknown_object.gif)
+    *Caption: Preliminary reconstruction of unknown object in park near molette.*
+
 *   **Other Datasets (COLMAP Visualization):**
     ![](assets/gifs/rabbit.gif)
     ![](assets/gifs/port_amp.gif)
