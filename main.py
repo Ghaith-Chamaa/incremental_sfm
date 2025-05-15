@@ -25,12 +25,10 @@ type_ = "png"
 # )
 # type_ = "png"
 
-
 # n_imgs = 18
 # imgset = "daal_tin"
 # K = np.matrix("3368.26 0 1488.67; 0 3369.74 2023.21; 0 0 1")
 # type_ = "jpg"
-
 
 # n_imgs = 51  # Custom Dataset Blue Color Robot. 51 images taken from my mobile phone. first I did the camera calibration to find the K matrix
 # imgset = "blue_boot_a53_4624x3468"

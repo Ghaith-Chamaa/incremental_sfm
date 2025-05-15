@@ -38,10 +38,13 @@ class SIFTMatcher:
         """
         keypoints_list: List = []
         descriptors_list: List = []
+        i = 0
         for img in images:
             kp, des = self.sift.detectAndCompute(img, None)
+            print(f"Extracted {len(kp)} SIFT features for frame# {i}")
             keypoints_list.append(kp)
             descriptors_list.append(des)
+            i+=1
         return keypoints_list, descriptors_list
 
     def match_all_pairs(self, descriptors: List[np.ndarray]) -> List[List]:
@@ -54,6 +57,7 @@ class SIFTMatcher:
         Returns:
             List[List]: Upper-triangular matrix of raw matches.
         """
+        print(f"\n======== Getting Image Features ========")
         n = len(descriptors)
         matches: List[List] = [[[] for _ in range(n)] for _ in range(n)]
         for i in range(n):
@@ -62,6 +66,7 @@ class SIFTMatcher:
                 good = [m[0] for m in raw
                         if len(m) == 2 and m[0].distance < self.ratio_threshold * m[1].distance]
                 matches[i][j] = good
+                print(f"Image# {i} has {len(good)} matches with Image# {j}")
         return matches
 
     def filter_outliers(self, matches: List[List], keypoints: List) -> List[List]:
@@ -75,6 +80,7 @@ class SIFTMatcher:
         Returns:
             List[List]: Matches passing geometric consistency.
         """
+        print(f"\n\n\n======== Filtering Bad Matches ========\n")
         filtered: List[List] = [[[] for _ in row] for row in matches]
         for i, row in enumerate(matches):
             for j, pair in enumerate(row):
@@ -100,6 +106,7 @@ class SIFTMatcher:
                 inliers = [pair[k] for k in range(len(pair)) if mask_flat[k] == 1]
                 if len(inliers) >= self.min_matches:
                     filtered[i][j] = inliers
+                print(f"Image# {i} has {len(inliers)} good matches with Image# {j}")
         return filtered
 
     def count_total_matches(self, matches: List[List]) -> int:
