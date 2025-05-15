@@ -6,7 +6,7 @@ from typing import Tuple, List
 import os
 import glob
 from sklearn.cluster import KMeans
-
+from typing import Tuple, List, Dict, Optional, Union
 
 def visualize_point_cloud(points_3D):
     """
@@ -279,21 +279,28 @@ def undistort_images(imgL, imgR, K, dist):
     return left_undistorted, right_undistorted
 
 
-def get_images(base_path, dataset_path, type_="color"):
-    images_path = sorted(glob.glob(dataset_path + "/*.png"))
+def get_images(base_path, dataset_path, img_format, use_n_imgs=-1, type_="color", resize=None):
+    images_paths = sorted(
+        glob.glob(
+            os.path.join(base_path, "datasets", dataset_path) + "/*." + img_format,
+            recursive=True,
+        )
+    )
     images = []
-    for filename in [os.path.join(base_path, img_path) for img_path in images_path]:
-        if filename.endswith(".png"):
-            img_path = os.path.join(dataset_path, filename)
-            if type_ == "color":
-                image = cv2.imread(img_path)
-            elif type_ == "gray":
-                image = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
-            else:
-                raise ValueError("Invalid image type. Choose 'color' or 'gray'.")
-            images.append(image)
+    if not use_n_imgs==-1 and use_n_imgs<=len(images_paths):
+        images_paths=images_paths[:use_n_imgs]
+        
+    for img_path in images_paths:
+        if type_ == "color":
+            image = cv2.imread(img_path, cv2.IMREAD_COLOR)
+        elif type_ == "gray":
+            image = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
+        else:
+            raise ValueError("Invalid image type. Choose 'color' or 'gray'.")
+        if resize:
+            image = cv2.resize(image, resize)
+        images.append(image)
     return images
-
 
 def extract_name_K_R_T(image_parameters=""):
     if image_parameters == "":
@@ -414,3 +421,232 @@ def build_histogram(descriptor, kmeans):
     labels = kmeans.predict(descriptor)
     histogram, _ = np.histogram(labels, bins=np.arange(kmeans.n_clusters + 1))
     return histogram / np.sum(histogram)  # Normalize histogram
+
+class Point3DWithViews:
+    """
+    Represents a 3D point along with the indices of its corresponding 2D keypoints in multiple images.
+
+    Attributes:
+        point3d (np.ndarray): The 3D coordinates of the point (shape: (3,)).
+        source_2dpt_idxs (Dict[int, int]): Mapping from image index to keypoint index within that image.
+    """
+    def __init__(self, point3d: np.ndarray, source_2dpt_idxs: Dict[int, int]):
+        self.point3d = point3d
+        self.source_2dpt_idxs = source_2dpt_idxs
+
+# Helper function to convert rotation matrix to quaternion (w, x, y, z)
+# This is a common implementation. You might need to adjust based on COLMAP's exact convention
+# if it differs, but (w, x, y, z) for R_cw (camera from world) is typical.
+def rotation_matrix_to_quaternion(R):
+    """Converts a rotation matrix to a quaternion (w, x, y, z)."""
+    # Ensure the matrix is a NumPy array
+    R = np.asarray(R, dtype=float)
+    
+    # Calculate the trace of the matrix
+    trace = np.trace(R)
+    
+    if trace > 0:
+        S = np.sqrt(trace + 1.0) * 2
+        qw = 0.25 * S
+        qx = (R[2, 1] - R[1, 2]) / S
+        qy = (R[0, 2] - R[2, 0]) / S
+        qz = (R[1, 0] - R[0, 1]) / S
+    elif (R[0, 0] > R[1, 1]) and (R[0, 0] > R[2, 2]):
+        S = np.sqrt(1.0 + R[0, 0] - R[1, 1] - R[2, 2]) * 2
+        qw = (R[2, 1] - R[1, 2]) / S
+        qx = 0.25 * S
+        qy = (R[0, 1] + R[1, 0]) / S
+        qz = (R[0, 2] + R[2, 0]) / S
+    elif R[1, 1] > R[2, 2]:
+        S = np.sqrt(1.0 + R[1, 1] - R[0, 0] - R[2, 2]) * 2
+        qw = (R[0, 2] - R[2, 0]) / S
+        qx = (R[0, 1] + R[1, 0]) / S
+        qy = 0.25 * S
+        qz = (R[1, 2] + R[2, 1]) / S
+    else:
+        S = np.sqrt(1.0 + R[2, 2] - R[0, 0] - R[1, 1]) * 2
+        qw = (R[1, 0] - R[0, 1]) / S
+        qx = (R[0, 2] + R[2, 0]) / S
+        qy = (R[1, 2] + R[2, 1]) / S
+        qz = 0.25 * S
+        
+    return qw, qx, qy, qz
+
+def export_to_colmap(
+    output_path: str,
+    K_matrix: np.matrix,
+    image_paths: List[str],
+    loaded_images: List[np.ndarray], 
+    all_keypoints: List[List[cv2.KeyPoint]],
+    reconstructed_R_mats: Dict[int, np.ndarray],
+    reconstructed_t_vecs: Dict[int, np.ndarray],
+    reconstructed_points3d_with_views: List[Point3DWithViews],
+    image_height: int,
+    image_width: int,
+    point_color_strategy: str = "first" # NEW: "first", "average", or "median"
+):
+    """
+    Exports reconstruction data to COLMAP text format, with selectable RGB strategy.
+    """
+    os.makedirs(output_path, exist_ok=True)
+    valid_color_strategies = ["first", "average", "median"]
+    if point_color_strategy not in valid_color_strategies:
+        raise ValueError(f"Invalid point_color_strategy. Choose from {valid_color_strategies}")
+
+    # --- 1. cameras.txt (remains the same) ---
+    with open(os.path.join(output_path, "cameras.txt"), "w") as f_cam:
+        f_cam.write("# Camera list with one line of data per camera:\n")
+        f_cam.write("#   CAMERA_ID, MODEL, WIDTH, HEIGHT, PARAMS[]\n")
+        f_cam.write(f"# Number of cameras: 1\n")
+        
+        cam_id = 1 
+        model = "PINHOLE"
+        width = image_width
+        height = image_height
+        fx = K_matrix[0, 0]
+        fy = K_matrix[1, 1]
+        cx = K_matrix[0, 2]
+        cy = K_matrix[1, 2]
+        f_cam.write(f"{cam_id} {model} {width} {height} {fx} {fy} {cx} {cy}\n")
+
+    colmap_img_id_map = {py_idx: col_idx for col_idx, py_idx in enumerate(sorted(reconstructed_R_mats.keys()), 1)}
+    
+    # --- 2. points3D.txt (modified for RGB strategy) ---
+    points3d_lines_buffer = [] 
+
+    num_valid_3d_points = 0
+    track_lengths = []
+
+    for pt3d_py_idx, pt_obj in enumerate(reconstructed_points3d_with_views):
+        colmap_point3d_id = pt3d_py_idx + 1
+        
+        x_3d, y_3d, z_3d = pt_obj.point3d.ravel()
+        
+        r_val, g_val, b_val = 0, 0, 0 # Default color
+        point_colors_bgr_list = [] # Store as list of (B,G,R) tuples
+
+        sorted_observing_py_img_indices = sorted(pt_obj.source_2dpt_idxs.keys())
+
+        for img_py_idx in sorted_observing_py_img_indices:
+            if img_py_idx in reconstructed_R_mats:
+                kpt_original_idx = pt_obj.source_2dpt_idxs[img_py_idx]
+                
+                if 0 <= img_py_idx < len(loaded_images) and \
+                   0 <= kpt_original_idx < len(all_keypoints[img_py_idx]):
+                    
+                    kp = all_keypoints[img_py_idx][kpt_original_idx]
+                    kp_x, kp_y = kp.pt
+                    iy = int(round(kp_y))
+                    ix = int(round(kp_x))
+
+                    if 0 <= iy < image_height and 0 <= ix < image_width:
+                        bgr_pixel = loaded_images[img_py_idx][iy, ix]
+                        point_colors_bgr_list.append(bgr_pixel) # Store as (B, G, R)
+        
+        if point_colors_bgr_list:
+            if point_color_strategy == "first":
+                # Use the color from the first valid observation
+                b_val, g_val, r_val = point_colors_bgr_list[0] 
+            
+            elif point_color_strategy == "average":
+                # Average colors (convert to float for mean, then back to int)
+                avg_b = int(round(np.mean([c[0] for c in point_colors_bgr_list])))
+                avg_g = int(round(np.mean([c[1] for c in point_colors_bgr_list])))
+                avg_r = int(round(np.mean([c[2] for c in point_colors_bgr_list])))
+                b_val, g_val, r_val = avg_b, avg_g, avg_r
+            
+            elif point_color_strategy == "median":
+                # Median colors (more robust to outliers)
+                # np.median operates on flattened arrays or per-axis
+                # For RGB, it's common to take median per channel
+                median_b = int(round(np.median([c[0] for c in point_colors_bgr_list])))
+                median_g = int(round(np.median([c[1] for c in point_colors_bgr_list])))
+                median_r = int(round(np.median([c[2] for c in point_colors_bgr_list])))
+                b_val, g_val, r_val = median_b, median_g, median_r
+            
+            # Ensure values are within 0-255 (though rounding from mean/median should be okay)
+            r_val = np.clip(r_val, 0, 255)
+            g_val = np.clip(g_val, 0, 255)
+            b_val = np.clip(b_val, 0, 255)
+        
+        # Note: COLMAP expects R G B order
+        final_r, final_g, final_b = r_val, g_val, b_val
+
+        error = 0.0 
+
+        track_str_parts = []
+        current_track_length = 0
+        for img_py_idx, kpt_original_idx in pt_obj.source_2dpt_idxs.items():
+            if img_py_idx in colmap_img_id_map:
+                colmap_image_id = colmap_img_id_map[img_py_idx]
+                track_str_parts.extend([str(colmap_image_id), str(kpt_original_idx)])
+                current_track_length += 1
+
+        if current_track_length >= 2:
+            num_valid_3d_points += 1
+            track_lengths.append(current_track_length)
+            track_str = " ".join(track_str_parts)
+            points3d_lines_buffer.append(f"{colmap_point3d_id} {x_3d} {y_3d} {z_3d} {final_r} {final_g} {final_b} {error} {track_str}\n")
+
+    with open(os.path.join(output_path, "points3D.txt"), "w") as f_pts3d:
+        f_pts3d.write("# 3D point list with one line of data per point:\n")
+        f_pts3d.write("#   POINT3D_ID, X, Y, Z, R, G, B, ERROR, TRACK[] as (IMAGE_ID, POINT2D_IDX)\n")
+        mean_track_len_val = np.mean(track_lengths) if track_lengths else 0
+        f_pts3d.write(f"# Number of points: {num_valid_3d_points}, mean track length: {mean_track_len_val}\n")
+        for line in points3d_lines_buffer:
+            f_pts3d.write(line)
+
+    # --- 3. images.txt ---
+    images_lines_buffer = []
+    total_observations_for_header = 0
+
+    for py_img_idx in sorted(reconstructed_R_mats.keys()):
+        if py_img_idx not in colmap_img_id_map:
+            continue
+
+        colmap_image_id = colmap_img_id_map[py_img_idx]
+        R = reconstructed_R_mats[py_img_idx]
+        t = reconstructed_t_vecs[py_img_idx].ravel()
+        qw, qx, qy, qz = rotation_matrix_to_quaternion(R)
+        tx, ty, tz = t[0], t[1], t[2]
+        camera_colmap_id = 1
+        img_name = os.path.basename(image_paths[py_img_idx])
+
+        images_lines_buffer.append(f"{colmap_image_id} {qw} {qx} {qy} {qz} {tx} {ty} {tz} {camera_colmap_id} {img_name}\n")
+
+        points2d_line_parts = []
+        num_observations_in_image = 0
+        
+        img_kpt_to_pt3d_id = {}
+        for pt3d_py_idx, pt_obj in enumerate(reconstructed_points3d_with_views):
+            temp_track_len = 0
+            for obs_img_idx in pt_obj.source_2dpt_idxs.keys():
+                if obs_img_idx in reconstructed_R_mats:
+                    temp_track_len +=1
+            
+            if temp_track_len >= 2:
+                colmap_pt3d_id_current = pt3d_py_idx + 1
+                if py_img_idx in pt_obj.source_2dpt_idxs:
+                    kpt_orig_idx = pt_obj.source_2dpt_idxs[py_img_idx]
+                    img_kpt_to_pt3d_id[(py_img_idx, kpt_orig_idx)] = colmap_pt3d_id_current
+        
+        for kpt_original_idx, kp in enumerate(all_keypoints[py_img_idx]):
+            x_2d, y_2d = kp.pt
+            observed_colmap_point3d_id = img_kpt_to_pt3d_id.get((py_img_idx, kpt_original_idx), -1)
+            points2d_line_parts.extend([str(x_2d), str(y_2d), str(observed_colmap_point3d_id)])
+            if observed_colmap_point3d_id != -1:
+                num_observations_in_image += 1
+        
+        total_observations_for_header += num_observations_in_image
+        images_lines_buffer.append(" ".join(points2d_line_parts) + "\n")
+
+    with open(os.path.join(output_path, "images.txt"), "w") as f_img:
+        f_img.write("# Image list with two lines of data per image:\n")
+        f_img.write("#   IMAGE_ID, QW, QX, QY, QZ, TX, TY, TZ, CAMERA_ID, NAME\n")
+        f_img.write("#   POINTS2D[] as (X, Y, POINT3D_ID)\n")
+        mean_obs_val = total_observations_for_header / len(colmap_img_id_map) if colmap_img_id_map else 0
+        f_img.write(f"# Number of images: {len(colmap_img_id_map)}, mean observations per image: {mean_obs_val}\n")
+        for line in images_lines_buffer:
+            f_img.write(line)
+
+    print(f"COLMAP data exported to {output_path} using '{point_color_strategy}' color strategy.")

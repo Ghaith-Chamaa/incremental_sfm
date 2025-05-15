@@ -11,30 +11,9 @@ import bundle_adjustment as b
 from  matching import *
 from reconstruction import *
 import open3d as o3d
+from utils import *
 
 base_path = os.getcwd()
-
-
-def get_images(base_path, dataset, img_format, use_n_imgs=-1):
-    images = []
-    images_paths = sorted(
-        glob.glob(
-            os.path.join(base_path, "datasets", dataset) + "/*." + img_format,
-            recursive=True,
-        )
-    )
-    if not use_n_imgs==-1 and use_n_imgs<=len(images_paths):
-        images_paths=images_paths[:use_n_imgs]
-        
-    for images_path in images_paths:
-        try:
-            images.append(cv2.imread(images_path, cv2.IMREAD_GRAYSCALE))
-        except:
-            raise ValueError(
-                f"Need to pass in valid imgset name! Tried to read {images_path}"
-            )
-
-    return images
 
 def visualize_sfm_open3d(points_3d):
     """
@@ -61,9 +40,8 @@ K = np.matrix("1520.40 0.00 302.32; 0.00 1525.90 246.87; 0.00 0.00 1.00")
 # K = np.matrix(
 #     "3310.400000 0.000000 316.730000; 0.000000 3325.500000 200.550000; 0.000000 0.000000 1.000000"
 # )
-images = get_images(base_path, imgset, "png", n_imgs)
+images = get_images(base_path, imgset, "png", n_imgs, "gray")
 assert len(images) == n_imgs
-
 
 feam_pipeline = SIFTMatcher()
 keypoints, descriptors = feam_pipeline.extract_features(images)
@@ -152,7 +130,44 @@ vpoints_df = pd.DataFrame(data=vpoints, index=[f"{i}" for i in range(vpoints.sha
 # cloud.add_structure('voxelgrid', n_x=num_voxels,n_y=num_voxels,n_z=num_voxels)
 # cloud.structures[f'V([{num_voxels}, {num_voxels}, {num_voxels}],[None, None, None],True)'].plot(d=3)
 
+print("\nReconstruction finished. Exporting to COLMAP format...")
 
+if images:
+    img_h, img_w = images[0].shape[:2] # Assuming all images are same size for one camera model
+else:
+    print("No images loaded, cannot determine image dimensions for COLMAP export.")
 
+base_path = os.getcwd()
+imgset='templeRing'
+
+# Define where to save COLMAP files
+colmap_output_dir = os.path.join(base_path, "colmap_export", imgset) # example path
+
+# Get image paths again or pass from where `get_images` was called
+images_paths_for_export = sorted(
+    glob.glob(
+        os.path.join(base_path, "datasets", imgset) + "/*." + "png", # Assuming "png" or your img_format
+        recursive=True,
+    )
+)
+
+images_color_data = get_images(base_path, imgset, "png", n_imgs)
+
+# Choose your color strategy: "first", "average", or "median"
+chosen_color_strategy = "average" # Or "first" or "median"
+
+export_to_colmap(
+    output_path=colmap_output_dir,
+    K_matrix=K,
+    image_paths=images_paths_for_export,
+    loaded_images=images_color_data, 
+    all_keypoints=keypoints,
+    reconstructed_R_mats=R_mats,
+    reconstructed_t_vecs=t_vecs,
+    reconstructed_points3d_with_views=points3d_with_views,
+    image_height=img_h,
+    image_width=img_w,
+    point_color_strategy=chosen_color_strategy
+)
 
 visualize_sfm_open3d(vpoints)
