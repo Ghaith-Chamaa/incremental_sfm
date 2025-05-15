@@ -1,27 +1,40 @@
 import numpy as np
 import random
 import cv2
+from typing import Tuple, List, Dict
 
 class Point3D_with_views:
-    """If img_x is a key and kpt_y is a value in source_2dpt_idxs dict, then the 3d point in self.point3d
-    corresponds to the 2d point keypoints[img_x][kpt_y] (and to any other pairs in the dict)"""
-    def __init__(self, point3d, source_2dpt_idxs):
+    """
+    Represents a 3D point along with the indices of its corresponding 2D keypoints in multiple images.
+
+    Attributes:
+        point3d (np.ndarray): The 3D coordinates of the point (shape: 3,).
+        source_2dpt_idxs (dict): A mapping from image index to keypoint index within that image.
+    """
+    def __init__(self, point3d: np.ndarray, source_2dpt_idxs: Dict):
         self.point3d = point3d
         self.source_2dpt_idxs = source_2dpt_idxs
 
-def best_img_pair(img_adjacency, matches, keypoints, K, top_x_perc=0.2):
+def best_img_pair(img_adjacency: np.ndarray,
+                    matches: List,
+                    keypoints: List,
+                    K: np.ndarray,
+                    top_x_perc: float = 0.2) -> Tuple:
     """
-    Returns the image pair that has the greatest difference in rotation given that it is in the
-    top xth percentile for number of matches between images. Intent is to have a stable baseline to
-    initialize the reconstruction.
+    Selects the initial image pair for reconstruction by choosing the pair with sufficient matches
+    and the largest relative rotation.
 
-    :param img_adjacency: Matrix with value at indices i and j = 1 if images have matches, else 0
-    :param matches: List of lists of lists where matches[i][j][k] is the kth cv2.Dmatch object for images i and j
-    :param keypoints: List of lists of cv2.Keypoint objects. keypoints[i] is list for image i.
-    :param K: Matrix. Intrinsic parameters of camera
-    :param top_x_perc: Float. Threshold for considering image pairs to init reconstruction. e.g 0.2 means top 20%
-    of img pairs by num_matches
+    Args:
+        img_adjacency: Binary adjacency matrix of shape (N, N) indicating matching images.
+        matches: NxN list where matches[i][j] is a list of cv2.DMatch objects between images i and j.
+        keypoints: List of length N, where keypoints[i] is a list of cv2.KeyPoint objects for image i.
+        K: Camera intrinsic matrix (3x3).
+        top_x_perc: Percentile threshold to filter top matching image pairs.
+
+    Returns:
+        A tuple (i, j) of image indices forming the best initial pair.
     """
+
     num_matches = []
 
     for i in range(img_adjacency.shape[0]):
@@ -51,34 +64,47 @@ def best_img_pair(img_adjacency, matches, keypoints, K, top_x_perc=0.2):
 
     return best_pair
 
-def get_aligned_kpts(i, j, keypoints, matches, mask=None):
+def get_aligned_kpts(i: int,
+                          j: int,
+                          keypoints: List,
+                          matches: List,
+                          mask: np.ndarray = None):
     """
-    Returns list of kpts where kpts_i[ind] and kpts_j[ind] are pixel coords of matching kpts, and
-    lists of indices of each keypoint in kpts_i and kpts_j. This information then used for Essential matrix
-    calculation and/or triangulation.
+    Extracts aligned arrays of matched 2D keypoints between two images.
 
-    :param i: Integer. Index of first image
-    :param j: Integer. Index of second image
-    :param keypoints: List of lists of cv2.Keypoint objects. keypoints[i] is list for image i.
-    :param matches: List of lists of lists where matches[i][j][k] is the kth cv2.Dmatch object for images i and j
-    :param mask: Array. Equal to 0 at indices where information on that keypoint is not needed, else 1
+    Args:
+        i: Index of the first image.
+        j: Index of the second image.
+        keypoints: List of keypoints per image.
+        matches: Match matrix between images.
+        mask: Optional boolean mask to select subset of matches.
+
+    Returns:
+        pts_i, pts_j: Arrays of shape (M, 1, 2) of matched keypoint coordinates.
+        idxs_i, idxs_j: Lists of original keypoint indices in each image.
     """
+    dm = matches[i][j]
+    M = len(dm)
     if mask is None:
-        mask = np.ones(len(matches[i][j])) #if no mask is given, all matches used. This is helpful if we only want to triangulate certain matches.
+        mask = np.ones(M, dtype=bool)
 
-    kpts_i, kpts_i_idxs, kpts_j, kpts_j_idxs = [], [], [], []
-    for k in range(len(matches[i][j])):
-        if mask[k] == 0: continue
-        kpts_i.append(keypoints[i][matches[i][j][k].queryIdx].pt)
-        kpts_i_idxs.append(matches[i][j][k].queryIdx)
-        kpts_j.append(keypoints[j][matches[i][j][k].trainIdx].pt)
-        kpts_j_idxs.append(matches[i][j][k].trainIdx)
-    kpts_i = np.array(kpts_i)
-    kpts_j = np.array(kpts_j)
-    kpts_i = np.expand_dims(kpts_i, axis=1) #this seems to be required for cv2.undistortPoints and cv2.trangulatePoints to work
-    kpts_j = np.expand_dims(kpts_j, axis=1)
+    pts_i, pts_j = [], []
+    idxs_i, idxs_j = [], []
 
-    return kpts_i, kpts_j, kpts_i_idxs, kpts_j_idxs
+    for k, m in enumerate(dm):
+        if not mask[k]:
+            continue
+        pt_i = keypoints[i][m.queryIdx].pt
+        pt_j = keypoints[j][m.trainIdx].pt
+        pts_i.append(pt_i)
+        pts_j.append(pt_j)
+        idxs_i.append(m.queryIdx)
+        idxs_j.append(m.trainIdx)
+
+    pts_i = np.expand_dims(np.array(pts_i), axis=1)
+    pts_j = np.expand_dims(np.array(pts_j), axis=1)
+
+    return pts_i, pts_j, idxs_i, idxs_j
 
 def triangulate_points_and_reproject(R_l, t_l, R_r, t_r, K, points3d_with_views, img_idx1, img_idx2, kpts_i, kpts_j, kpts_i_idxs, kpts_j_idxs, reproject=True):
     """
