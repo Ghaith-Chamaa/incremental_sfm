@@ -279,7 +279,7 @@ def undistort_images(imgL, imgR, K, dist):
     return left_undistorted, right_undistorted
 
 
-def get_images(base_path, dataset_path, img_format, use_n_imgs=-1, type_="color", resize=None):
+def get_images(base_path, dataset_path, img_format, use_n_imgs=-1, type_="color"):
     images_paths = sorted(
         glob.glob(
             os.path.join(base_path, "datasets", dataset_path) + "/*." + img_format,
@@ -297,8 +297,6 @@ def get_images(base_path, dataset_path, img_format, use_n_imgs=-1, type_="color"
             image = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
         else:
             raise ValueError("Invalid image type. Choose 'color' or 'gray'.")
-        if resize:
-            image = cv2.resize(image, resize)
         images.append(image)
     return images
 
@@ -650,3 +648,18 @@ def export_to_colmap(
             f_img.write(line)
 
     print(f"COLMAP data exported to {output_path} using '{point_color_strategy}' color strategy.")
+
+
+def visualize_sfm_open3d(points_3d):
+    """
+    Visualizes a 3D point cloud obtained from Structure from Motion (SfM) using Open3D.
+
+    Parameters:
+    points_3d (numpy.ndarray): A 2D NumPy array representing the 3D points. Each row contains the (x, y, z) coordinates of a point.
+
+    Returns:
+    None. The function displays the 3D point cloud in a new window using Open3D.
+    """
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(points_3d)
+    o3d.visualization.draw_geometries([pcd], window_name="SfM 3D Reconstruction")

@@ -15,32 +15,22 @@ from utils import *
 
 base_path = os.getcwd()
 
-def visualize_sfm_open3d(points_3d):
-    """
-    Visualizes a 3D point cloud obtained from Structure from Motion (SfM) using Open3D.
-
-    Parameters:
-    points_3d (numpy.ndarray): A 2D NumPy array representing the 3D points. Each row contains the (x, y, z) coordinates of a point.
-
-    Returns:
-    None. The function displays the 3D point cloud in a new window using Open3D.
-    """
-    pcd = o3d.geometry.PointCloud()
-    pcd.points = o3d.utility.Vector3dVector(points_3d)
-    o3d.visualization.draw_geometries([pcd], window_name="SfM 3D Reconstruction")
-
-
-
 n_imgs = 46  # 46 if imgset = 'templering', 49 if imgset = 'Viking'
 imgset = "templeRing"
 K = np.matrix("1520.40 0.00 302.32; 0.00 1525.90 246.87; 0.00 0.00 1.00")
-
+type_ = "png"
 # imgset = "dino"
 # n_imgs = 46
 # K = np.matrix(
 #     "3310.400000 0.000000 316.730000; 0.000000 3325.500000 200.550000; 0.000000 0.000000 1.000000"
 # )
-images = get_images(base_path, imgset, "png", n_imgs, "gray")
+
+# n_imgs = 18
+# imgset = "daal_tin"
+# K = np.matrix("3368.26 0 1488.67; 0 3369.74 2023.21; 0 0 1")
+# type_ = "jpg"
+
+images = get_images(base_path, imgset, type_, n_imgs, "gray")
 assert len(images) == n_imgs
 
 feam_pipeline = SIFTMatcher()
@@ -126,10 +116,6 @@ for pt3 in points3d_with_views:
 vpoints = list(zip(x,y,z))
 vpoints = np.array(vpoints)
 vpoints_df = pd.DataFrame(data=vpoints, index=[f"{i}" for i in range(vpoints.shape[0])], columns=["x", "y","z"])
-# cloud = pyntcloud.PyntCloud(vpoints_df)
-# cloud.add_structure('voxelgrid', n_x=num_voxels,n_y=num_voxels,n_z=num_voxels)
-# cloud.structures[f'V([{num_voxels}, {num_voxels}, {num_voxels}],[None, None, None],True)'].plot(d=3)
-
 print("\nReconstruction finished. Exporting to COLMAP format...")
 
 if images:
