@@ -427,11 +427,7 @@ class ReconstructionPipeline:
             object_points,
             image_points,
             K,
-            distCoeffs=np.array([]),  # Assuming no distortion
-            iterationsCount=iterations,
-            reprojectionError=float(reprojThresh**2), # Must be float, use squared threshold
-            confidence=0.99,          # Default is 0.99
-            flags=cv2.SOLVEPNP_SQPNP  # Or cv2.SOLVEPNP_EPNP
+            cv2.SOLVEPNP_ITERATIVE  # Or cv2.SOLVEPNP_EPNP
         )
 
         if success and rvec is not None and tvec is not None:
