@@ -33,20 +33,25 @@ type_ = "png"
 # K = np.matrix("3368.26 0 1488.67; 0 3369.74 2023.21; 0 0 1")
 # type_ = "jpg"
 
-# n_imgs = 51  # Custom Dataset Blue Color Robot. 51 images taken from my mobile phone. first I did the camera calibration to find the K matrix
-# imgset = "blue_boot_a53_4624x3468"
-# K = np.matrix("2.25370759e+03 0.00000000e+00 1.92969309e+03; 0.00000000e+00 2.24471892e+03 1.05763445e+03; 0.00 0.00 1.00")
+# n_imgs = 32  # Custom Dataset Blue Color Robot. 51 images taken from my mobile phone. first I did the camera calibration to find the K matrix
+# imgset = "mollet_pharm"
+# K = np.matrix("3292.497243914645 0.00 1740.9435935985923; 0.00 3317.367458634331 2296.8076443672303; 0.00 0.00 1.00")
+# type_ = "jpg"
+
+# n_imgs = 23
+# imgset = "corn_fl_box"
+# K = np.matrix("3368.26 0 1488.67; 0 3369.74 2023.21; 0 0 1")
+# type_ = "JPG"
+
+# n_imgs = 37  # Custom Dataset Blue Color Robot. 51 images taken from my mobile phone. first I did the camera calibration to find the K matrix
+# imgset = "idk_park"
+# K = np.matrix("3292.497243914645 0.00 1740.9435935985923; 0.00 3317.367458634331 2296.8076443672303; 0.00 0.00 1.00")
 # type_ = "jpg"
 
 # --- Create Output Directories ---
 output_plots_base_dir = os.path.join(base_path, "output_plots", imgset)
 features_out_dir = os.path.join(output_plots_base_dir, "features")
 matches_out_dir = os.path.join(output_plots_base_dir, "feature_matches")
-
-os.makedirs(features_out_dir, exist_ok=True)
-os.makedirs(matches_out_dir, exist_ok=True)
-print(f"Saving feature plots to: {features_out_dir}")
-print(f"Saving match plots to: {matches_out_dir}")
 
 images = get_images(base_path, imgset, type_, n_imgs, "gray")
 images_color_for_plotting = get_images(base_path, imgset, type_, n_imgs)
@@ -57,7 +62,11 @@ feam_pipeline = SIFTMatcher()
 keypoints, descriptors = feam_pipeline.extract_features(images)
 
 if SAVE_PLOTS:
-    print(f"\n======== Plotting and Saving Features (first few images as example) ========")
+    os.makedirs(features_out_dir, exist_ok=True)
+    os.makedirs(matches_out_dir, exist_ok=True)
+    print(f"Saving feature plots to: {features_out_dir}")
+    print(f"Saving match plots to: {matches_out_dir}")
+    print(f"\n\n\n======== Plotting and Saving Features (first few images as example) ========")
     for i in range(n_imgs):
         img_for_plot = images_color_for_plotting[i] if images_color_for_plotting else images[i]
         save_plotted_keypoints(
@@ -222,6 +231,7 @@ while len(unresected_imgs) > 0:
                 learning_rate=1e-45 # Adjust as needed
             )
         
+
     av = 0
     for im in resected_imgs:
         p3d, p2d, avg_error, errors = rec_pipeline.get_reproj_errors(im, points3d_with_views, R_mats[im], t_vecs[im], K, keypoints, distCoeffs=np.array([]))
@@ -230,10 +240,100 @@ while len(unresected_imgs) > 0:
     av = av/len(resected_imgs)
     print(f'Average reprojection error across all {len(resected_imgs)} resected images is {av} pixels')
     iter+=1
-    
-    
+
+# --- BUNDLE ADJUSTMENT COMPLETE ---
+
 ### This cell visualizes the pointcloud
-num_voxels = 200 #Set to 100 for faster visualization, 200 for higher resolution.
+num_voxels = 100 #Set to 100 for faster visualization, 200 for higher resolution.
+x, y, z = [], [], []
+for pt3 in points3d_with_views:
+    if abs(pt3.point3d[0][0]) + abs(pt3.point3d[0][1]) + abs(pt3.point3d[0][2]) < 100:
+        x.append(pt3.point3d[0][0])
+        y.append(pt3.point3d[0][1])
+        z.append(pt3.point3d[0][2])
+vpoints = list(zip(x,y,z))
+vpoints = np.array(vpoints)
+vpoints_df = pd.DataFrame(data=vpoints, index=[f"{i}" for i in range(vpoints.shape[0])], columns=["x", "y","z"])
+print("\nReconstruction finished. Exporting to COLMAP format...")
+
+if images:
+    img_h, img_w = images[0].shape[:2] # Assuming all images are same size for one camera model
+else:
+    print("No images loaded, cannot determine image dimensions for COLMAP export.")
+
+# Define where to save COLMAP files
+colmap_output_dir = os.path.join(base_path, "colmap_export", imgset) # example path
+
+# Get image paths again or pass from where `get_images` was called
+images_paths_for_export = sorted(
+    glob.glob(
+        os.path.join(base_path, "datasets", imgset) + "/*." + type_, # Assuming "png" or your img_format
+        recursive=True,
+    )
+)
+
+images_color_data = get_images(base_path, imgset, type_, n_imgs)
+
+# Choose your color strategy: "first", "average", or "median"
+chosen_color_strategy = "average" # Or "first" or "median"
+
+point_rgb_colors = export_to_colmap(
+    output_path=colmap_output_dir,
+    K_matrix=K,
+    image_paths=images_paths_for_export,
+    loaded_images=images_color_data, 
+    all_keypoints=keypoints,
+    reconstructed_R_mats=R_mats,
+    reconstructed_t_vecs=t_vecs,
+    reconstructed_points3d_with_views=points3d_with_views,
+    image_height=img_h,
+    image_width=img_w,
+    point_color_strategy=chosen_color_strategy
+)
+
+if vpoints is not None and vpoints.shape[0] > 0:
+    visualize_sfm_and_pose_open3d(
+        points_3D=vpoints,
+        camera_R_mats=R_mats,
+        camera_t_vecs=t_vecs,
+        K_matrix=K,
+        image_width=img_w,    
+        image_height=img_h,
+        frustum_scale=0.3,
+        point_colors=point_rgb_colors
+    )
+else:
+    print("No points to visualize.")
+
+
+# --- STARTING FINAL GLOBAL BUNDLE ADJUSTMENT ---
+if len(resected_imgs) > 2 and points3d_with_views: # Ensure there's enough data for a meaningful global BA
+    print(f"\n======== Performing Final Global Bundle Adjustment on {len(resected_imgs)} cameras and {len(points3d_with_views)} points ========")
+    
+    global_ftol_val = 1e-3 # Stricter tolerance for global BA
+    global_n_iter_torch = 1000 # More iterations for global BA
+    global_lr_torch = 5e-5 # Potentially smaller LR for fine-tuning
+
+    if not USE_PYTORCH_OPTIMIZER:
+        points3d_with_views, R_mats, t_vecs = b.do_BA(
+            points3d_with_views, R_mats, t_vecs, 
+            resected_imgs, # Should contain all successfully processed images
+            keypoints, K, ftol=global_ftol_val
+        )
+    else:
+        points3d_with_views, R_mats, t_vecs = b.do_BA_pytorch(
+            points3d_with_views, R_mats, t_vecs, 
+            resected_imgs, # Should contain all successfully processed images
+            keypoints, 
+            K, 
+            n_iterations=global_n_iter_torch, 
+            learning_rate=global_lr_torch
+        )
+    
+    print("\n======== Global Bundle Adjustment Complete ========")
+
+### This cell visualizes the pointcloud
+num_voxels = 100 #Set to 100 for faster visualization, 200 for higher resolution.
 x, y, z = [], [], []
 for pt3 in points3d_with_views:
     if abs(pt3.point3d[0][0]) + abs(pt3.point3d[0][1]) + abs(pt3.point3d[0][2]) < 100:
@@ -290,7 +390,7 @@ if vpoints is not None and vpoints.shape[0] > 0:
         K_matrix=K,
         image_width=img_w,    
         image_height=img_h,
-        frustum_scale=0.5,
+        frustum_scale=0.3,
         point_colors=point_rgb_colors
     )
 else:
