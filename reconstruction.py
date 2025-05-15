@@ -330,41 +330,6 @@ class ReconstructionPipeline:
 
         return pts3d, pts3d_for_pnp, pts2d_for_pnp, triangulation_status
 
-    # def do_pnp(self, pts3d_for_pnp, pts2d_for_pnp, K, iterations=200, reprojThresh=5):
-    #     """
-    #     Performs Pnp with Ransac implemented manually. The camera pose which has the most inliers (points which
-    #     when reprojected are sufficiently close to their keypoint coordinate) is deemed best and is returned.
-
-    #     :param pts3d_for_pnp: list of index aligned 3D coordinates
-    #     :param pts2d_for_pnp: list of index aligned 2D coordinates
-    #     :param K: Intrinsics matrix
-    #     :param iterations: Number of Ransac iterations
-    #     :param reprojThresh: Max reprojection error for point to be considered an inlier
-    #     """
-    #     list_pts3d_for_pnp = pts3d_for_pnp
-    #     list_pts2d_for_pnp = pts2d_for_pnp
-    #     pts3d_for_pnp = np.squeeze(np.array(pts3d_for_pnp))
-    #     pts2d_for_pnp = np.expand_dims(np.squeeze(np.array(pts2d_for_pnp)), axis=1)
-    #     num_pts = len(pts3d_for_pnp)
-
-    #     highest_inliers = 0
-    #     for i in range(iterations):
-    #         pt_idxs = np.random.choice(num_pts, 6, replace=False)
-    #         pts3 = np.array([pts3d_for_pnp[pt_idxs[i]] for i in range(len(pt_idxs))])
-    #         pts2 = np.array([pts2d_for_pnp[pt_idxs[i]] for i in range(len(pt_idxs))])
-    #         _, rvec, tvec = cv2.solvePnP(pts3, pts2, K, distCoeffs=np.array([]), flags=cv2.SOLVEPNP_ITERATIVE)
-    #         R, _ = cv2.Rodrigues(rvec)
-    #         pnp_errors, projpts, avg_err, perc_inliers = self.test_reproj_pnp_points(list_pts3d_for_pnp, list_pts2d_for_pnp, R, tvec, K, rep_thresh=reprojThresh)
-    #         if highest_inliers < perc_inliers:
-    #             highest_inliers = perc_inliers
-    #             best_R = R
-    #             best_tvec = tvec
-    #     R = best_R
-    #     tvec = best_tvec
-    #     print('rvec:', rvec,'\n\ntvec:', tvec)
-
-    #     return R, tvec
-    
     def do_pnp(self, pts3d_for_pnp: List[np.ndarray], pts2d_for_pnp: List[Tuple[float, float]], K: np.matrix, iterations: int = 200, reprojThresh: float = 5.0):
         """
         Performs PnP using cv2.solvePnPRansac to estimate the pose of a new camera.
@@ -415,14 +380,9 @@ class ReconstructionPipeline:
              print(f"Error: Not enough points ({object_points.shape[0]}) for PnP after formatting.")
              return None, None
 
-
-        # Use cv2.solvePnPRansac
-        # reprojectionError is the squared maximum allowed reprojection error.
         # flags: cv2.SOLVEPNP_SQPNP is robust and efficient (requires OpenCV >= 4.5.1)
         #        cv2.SOLVEPNP_EPNP is a common alternative.
         #        cv2.SOLVEPNP_ITERATIVE is also an option if you want to match the previous inner call.
-        # iterationsCount maps to the 'iterations' argument.
-        # confidence: Probability that the RANSAC procedure will produce a useful result.
         success, rvec, tvec, inliers = cv2.solvePnPRansac(
             object_points,
             image_points,

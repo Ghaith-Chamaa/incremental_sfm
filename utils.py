@@ -24,18 +24,11 @@ def visualize_point_cloud(points_3D):
     )  # Transpose to match Open3D format
 
     # Optionally, set colors (here we set all points to red)
-    bbox = pcd.get_axis_aligned_bounding_box()
-    diag_len = np.linalg.norm(bbox.get_max_bound() - bbox.get_min_bound())
-    voxel_size = diag_len / 200  # divide bounding box diagonal by voxel count
     colors = np.array([[1, 0, 0] for _ in range(points_3D.shape[1])])  # Red color
-    pcd.colors = o3d.utility.Vector3dVector(colors)
-    
-    # Create voxel grid
-    voxel_grid = o3d.geometry.VoxelGrid.create_from_point_cloud(pcd, voxel_size=voxel_size)
-
+    pcd.colors = o3d.utility.Vector3dVector(colors) 
     # Visualize the point cloud
     o3d.visualization.draw_geometries(
-        [pcd, voxel_grid], window_name="3D Point Cloud", point_show_normal=False, width=800, height=600
+        [pcd], window_name="3D Point Cloud", point_show_normal=False, width=800, height=600
     )
 
 

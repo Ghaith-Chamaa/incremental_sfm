@@ -36,6 +36,7 @@ class SIFTMatcher:
         Returns:
             Tuple[List, List]: (keypoints_list, descriptors_list)
         """
+        print(f"\n======== Getting Image Features ========")
         keypoints_list: List = []
         descriptors_list: List = []
         i = 0
@@ -57,7 +58,7 @@ class SIFTMatcher:
         Returns:
             List[List]: Upper-triangular matrix of raw matches.
         """
-        print(f"\n======== Getting Image Features ========")
+        print(f"\n======== Image Feature Matching ========")
         n = len(descriptors)
         matches: List[List] = [[[] for _ in range(n)] for _ in range(n)]
         for i in range(n):
@@ -94,14 +95,7 @@ class SIFTMatcher:
                     pts1, pts2, cv2.FM_RANSAC, self.ransac_threshold)
 
                 # If no model found or degenerate
-                if F is None or (F.shape == (3, 3) and np.linalg.det(F) > 1e-7):
-                    continue
-                    # print(f"F {F} \n F.shape {F.shape} np.linalg.det(F) {np.linalg.det(F) > 1e-7}")
-                    # raise ValueError(
-                    #     f"Degenerate F between images {i} and {j}"
-                    # )
-
-                if mask is None:
+                if F is None or mask is None or (F.shape == (3, 3) and np.linalg.det(F) > 1e-7):
                     continue
 
                 mask_flat = mask.ravel()
@@ -133,6 +127,7 @@ class SIFTMatcher:
         Returns:
             Tuple[np.ndarray, List[Tuple[int, int]]]: (adjacency matrix, connected pairs)
         """
+        print(f"\n======== Getting Image Adjacency Matrix ========\n")
         n = len(matches)
         adjacency = np.zeros((n, n), dtype=int)
         connected_pairs: List[Tuple[int, int]] = []
