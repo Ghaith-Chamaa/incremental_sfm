@@ -6,15 +6,13 @@ import glob
 import numpy as np
 import pandas as pd
 import matplotlib as mpl
-import matplotlib.pyplot as plt
 import bundle_adjustment as b
 from  matching import *
 from reconstruction import *
-import open3d as o3d
 from utils import *
 
 base_path = os.getcwd()
-
+use_pytorch_optimizer = True
 n_imgs = 46  # 46 if imgset = 'templering', 49 if imgset = 'Viking'
 imgset = "templeRing"
 K = np.matrix("1520.40 0.00 302.32; 0.00 1525.90 246.87; 0.00 0.00 1.00")
@@ -41,7 +39,7 @@ type_ = "png"
 
 images = get_images(base_path, imgset, type_, n_imgs, "gray")
 assert len(images) == n_imgs
-print(f"\n======== Using total {images} images of dataset {imgset} ========\n\n\n")
+print(f"\n======== Using total {len(images)} images of dataset {imgset} ========\n\n\n")
 
 feam_pipeline = SIFTMatcher()
 keypoints, descriptors = feam_pipeline.extract_features(images)
@@ -99,12 +97,31 @@ while len(unresected_imgs) > 0:
     
     if 0.8 < perc_inliers < 0.95 or 5 < avg_tri_err_l < 10 or 5 < avg_tri_err_r < 10: 
         #If % of inlers from Pnp is too low or triangulation error on either image is too high, bundle adjust
-        points3d_with_views, R_mats, t_vecs = b.do_BA(points3d_with_views, R_mats, t_vecs, resected_imgs, keypoints, K, ftol=1e0)
-        
+        if not use_pytorch_optimizer:
+            points3d_with_views, R_mats, t_vecs = b.do_BA(points3d_with_views, R_mats, t_vecs, resected_imgs, keypoints, K, ftol=1e0)
+        else:
+            points3d_with_views, R_mats, t_vecs = b.do_BA_pytorch(
+                points3d_with_views, R_mats, t_vecs, 
+                resected_imgs, # This is the list of original image indices active in BA
+                keypoints, # This is your 'all_keypoints' list
+                K, # Your camera matrix
+                n_iterations=700, # Adjust as needed
+                learning_rate=1e-45 # Adjust as needed
+            )        
     if len(resected_imgs) in BA_chkpts or len(unresected_imgs) == 0 or perc_inliers <= 0.8 or avg_tri_err_l >= 10 or avg_tri_err_r >= 10:
         #If % of inlers from Pnp is very low or triangulation error on either image is very high, bundle adjust with stricter tolerance
-        points3d_with_views, R_mats, t_vecs = b.do_BA(points3d_with_views, R_mats, t_vecs, resected_imgs, keypoints, K, ftol=1e-1)
-    
+        if not use_pytorch_optimizer:
+            points3d_with_views, R_mats, t_vecs = b.do_BA(points3d_with_views, R_mats, t_vecs, resected_imgs, keypoints, K, ftol=1e-1)
+        else:
+            points3d_with_views, R_mats, t_vecs = b.do_BA_pytorch(
+                points3d_with_views, R_mats, t_vecs, 
+                resected_imgs, # This is the list of original image indices active in BA
+                keypoints, # This is your 'all_keypoints' list
+                K, # Your camera matrix
+                n_iterations=700, # Adjust as needed
+                learning_rate=1e-45 # Adjust as needed
+            )
+        
     av = 0
     for im in resected_imgs:
         p3d, p2d, avg_error, errors = rec_pipeline.get_reproj_errors(im, points3d_with_views, R_mats[im], t_vecs[im], K, keypoints, distCoeffs=np.array([]))
@@ -133,9 +150,6 @@ if images:
 else:
     print("No images loaded, cannot determine image dimensions for COLMAP export.")
 
-base_path = os.getcwd()
-imgset='templeRing'
-
 # Define where to save COLMAP files
 colmap_output_dir = os.path.join(base_path, "colmap_export", imgset) # example path
 
@@ -147,7 +161,7 @@ images_paths_for_export = sorted(
     )
 )
 
-images_color_data = get_images(base_path, imgset, "png", n_imgs)
+images_color_data = get_images(base_path, imgset, type_, n_imgs)
 
 # Choose your color strategy: "first", "average", or "median"
 chosen_color_strategy = "average" # Or "first" or "median"
