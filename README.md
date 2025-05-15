@@ -541,12 +541,12 @@ The pipeline produces:
     *Caption: Reconstruction of a custom object dataset.*
 
 *   **Custom Dataset Reconstruction:**
-    ![](assets/gifs/pharm_at_mollet.mp4)
+    ![](assets/gifs/pharm_at_mollet.gif)
     
     *Caption: Reconstruction of Pharmacy at molette in Le Creusot.*
 
 *   **Custom Dataset Reconstruction:**
-    ![](assets/gifs/corn_fla_box.mp4)
+    ![](assets/gifs/corn_fla_box.gif)
     
     *Caption: Reconstruction of corn flakes cereal box.*
 
@@ -562,7 +562,8 @@ The pipeline produces:
 
 *   **Other Datasets (COLMAP Visualization):**
     ![](assets/gifs/rabbit.gif)
-    ![](assets/gifs/port_amp.gif) [Credit: Hassaan Ahmad for Dataset]
+    ![](assets/gifs/port_amp.gif)
+    [Credit: Hassaan Ahmad's phone for Dataset to test the quality of our pipeline]
 
 ---
 
