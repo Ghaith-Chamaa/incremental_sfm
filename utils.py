@@ -836,3 +836,182 @@ def visualize_sfm_and_pose_open3d(
         width=1000,
         height=800
     )
+    
+import cv2
+import numpy as np
+from sklearn.cluster import MiniBatchKMeans # Efficient for large datasets
+
+class BoVW:
+    def __init__(self, vocabulary_size=1000, max_descriptors_for_vocab_build=500000, random_state=42):
+        """
+        Initializes the Bag of Visual Words handler.
+        Args:
+            vocabulary_size (int): The desired number of visual words in the vocabulary.
+            max_descriptors_for_vocab_build (int): Maximum number of descriptors to use for building vocabulary
+                                                   to keep memory and time manageable.
+            random_state (int): Random seed for reproducibility of clustering.
+        """
+        self.vocabulary_size = vocabulary_size
+        self.max_descriptors_for_vocab_build = max_descriptors_for_vocab_build
+        self.random_state = random_state
+        self.vocabulary = None  # This will store the k-means cluster centers (visual words)
+        self.bovw_database = {} # Stores BoVW histograms for processed images: {img_idx: histogram}
+        self._descriptors_for_vocab_training = [] # Temporarily stores descriptors for training
+
+    def add_descriptors_for_training(self, list_of_descriptor_arrays):
+        """
+        Collects descriptors from images to be used for vocabulary training.
+        Call this for all images before calling build_vocabulary.
+        Args:
+            list_of_descriptor_arrays (list): A list where each element is a NumPy array of descriptors
+                                             (e.g., SIFT descriptors) for an image.
+        """
+        if self.vocabulary is not None:
+            print("Warning: Vocabulary already built. Not adding more descriptors for training.")
+            return
+
+        for desc_array in list_of_descriptor_arrays:
+            if desc_array is not None and len(desc_array) > 0:
+                self._descriptors_for_vocab_training.extend(desc_array)
+
+        current_pool_size = len(self._descriptors_for_vocab_training)
+        if current_pool_size > self.max_descriptors_for_vocab_build:
+            print(f"Descriptor pool for vocab training ({current_pool_size}) exceeds limit ({self.max_descriptors_for_vocab_build}). Subsampling.")
+            indices = np.random.choice(current_pool_size, self.max_descriptors_for_vocab_build, replace=False)
+            self._descriptors_for_vocab_training = [self._descriptors_for_vocab_training[i] for i in indices]
+
+    def build_vocabulary(self):
+        """
+        Builds the visual vocabulary using k-means clustering on the collected descriptors.
+        """
+        if self.vocabulary is not None:
+            print("Vocabulary already built.")
+            return
+
+        if not self._descriptors_for_vocab_training:
+            print("Error: No descriptors collected for vocabulary training.")
+            return
+
+        descriptors_for_training = np.array(self._descriptors_for_vocab_training)
+        actual_num_descriptors = descriptors_for_training.shape[0]
+
+        if actual_num_descriptors == 0:
+            print("Error: Descriptor training array is empty after conversion.")
+            self._descriptors_for_vocab_training = [] # Clear temp storage
+            return
+
+        print(f"Building vocabulary with {actual_num_descriptors} descriptors and target vocab size {self.vocabulary_size}...")
+
+        if actual_num_descriptors < self.vocabulary_size:
+            print(f"Warning: Number of unique descriptors ({actual_num_descriptors}) is less than "
+                  f"target vocabulary size ({self.vocabulary_size}). Using all descriptors as vocabulary.")
+            self.vocabulary = np.unique(descriptors_for_training, axis=0)
+            self.vocabulary_size = self.vocabulary.shape[0]
+        else:
+            # Using MiniBatchKMeans for efficiency, especially with many descriptors
+            kmeans = MiniBatchKMeans(n_clusters=self.vocabulary_size,
+                                     random_state=self.random_state,
+                                     batch_size=min(self.vocabulary_size * 5, actual_num_descriptors // 5 + 1), # Ensure batch_size is reasonable
+                                     n_init='auto',
+                                     max_iter=100) # Can tune max_iter
+            kmeans.fit(descriptors_for_training)
+            self.vocabulary = kmeans.cluster_centers_
+
+        print(f"Vocabulary built with {self.vocabulary.shape[0]} visual words.")
+        self._descriptors_for_vocab_training = [] # Clear temporary storage to save memory
+
+    def descriptors_to_bovw_histogram(self, image_descriptors):
+        """
+        Converts a set of descriptors for a single image to a BoVW histogram.
+        Args:
+            image_descriptors (np.ndarray): NumPy array of descriptors for the image.
+        Returns:
+            np.ndarray: A normalized BoVW histogram (L1 norm). Returns zeros if no vocab or descriptors.
+        """
+        if self.vocabulary is None:
+            # print("Warning: Vocabulary not built yet. Cannot create BoVW histogram.")
+            return np.zeros(self.vocabulary_size if self.vocabulary_size > 0 else 1) # Avoid zero-size array
+        if image_descriptors is None or len(image_descriptors) == 0:
+            return np.zeros(self.vocabulary_size)
+
+        # For SIFT descriptors, NORM_L2 is standard.
+        # BFMatcher can be used to find the nearest visual word for each descriptor.
+        # Ensure image_descriptors are float32 as SIFT descriptors are
+        if image_descriptors.dtype != np.float32:
+            image_descriptors = image_descriptors.astype(np.float32)
+        if self.vocabulary.dtype != np.float32: # Vocabulary should also be float32
+            self.vocabulary = self.vocabulary.astype(np.float32)
+
+        bf = cv2.BFMatcher(cv2.NORM_L2)
+        # Query: image_descriptors, Train: vocabulary (the visual words)
+        matches = bf.match(queryDescriptors=image_descriptors, trainDescriptors=self.vocabulary)
+        
+        word_indices = [m.trainIdx for m in matches if m.trainIdx < self.vocabulary_size] # Safety check
+
+        histogram = np.zeros(self.vocabulary_size)
+        for idx in word_indices:
+            histogram[idx] += 1
+
+        # Normalize the histogram (L1 norm)
+        sum_hist = np.sum(histogram)
+        if sum_hist > 0:
+            histogram = histogram / sum_hist
+        return histogram
+
+    def add_image_to_bovw_db(self, img_idx, image_descriptors):
+        """
+        Computes the BoVW histogram for an image and adds/updates it in the database.
+        Args:
+            img_idx (int): The index of the image.
+            image_descriptors (np.ndarray): Descriptors for the image.
+        """
+        if self.vocabulary is None:
+            # This warning can be frequent if vocab building is deferred or fails.
+            # Consider logging it less verbosely in a real application.
+            # print(f"Debug: Vocab not ready, cannot add img {img_idx} to BoVW DB.")
+            return
+        histogram = self.descriptors_to_bovw_histogram(image_descriptors)
+        self.bovw_database[img_idx] = histogram
+
+    def query_similar_images(self, query_img_idx, query_descriptors, top_n=5, skip_recent_frames=5, min_similarity_score=0.05):
+        """
+        Finds the most similar images in the database to the query image,
+        excluding recent frames and the query image itself.
+        Args:
+            query_img_idx (int): Index of the current query image.
+            query_descriptors (np.ndarray): Descriptors of the current query image.
+            top_n (int): Maximum number of similar images to return.
+            skip_recent_frames (int): Number of chronologically adjacent frames to ignore.
+            min_similarity_score (float): Minimum similarity score to consider a match.
+        Returns:
+            list: A list of tuples (similarity_score, image_index), sorted by score.
+        """
+        if self.vocabulary is None or not self.bovw_database:
+            return []
+
+        query_histogram = self.descriptors_to_bovw_histogram(query_descriptors)
+        if np.sum(query_histogram) == 0: # No features in query image or other issue
+            return []
+
+        similarities = []
+        for db_img_idx, db_histogram in self.bovw_database.items():
+            # Avoid comparing with itself or very recent/adjacent images to find meaningful non-sequential loops
+            if db_img_idx == query_img_idx or abs(query_img_idx - db_img_idx) <= skip_recent_frames:
+                continue
+
+            # Using Cosine Similarity: (A dot B) / (||A|| * ||B||)
+            # For L1 normalized histograms, this is equivalent to dot product if histograms are treated as unit vectors,
+            # but it's safer to compute norms explicitly.
+            dot_product = np.dot(query_histogram, db_histogram)
+            norm_query = np.linalg.norm(query_histogram)
+            norm_db = np.linalg.norm(db_histogram)
+
+            similarity = 0.0
+            if norm_query > 1e-6 and norm_db > 1e-6: # Avoid division by zero
+                similarity = dot_product / (norm_query * norm_db)
+            
+            if similarity >= min_similarity_score:
+                similarities.append((similarity, db_img_idx))
+
+        similarities.sort(key=lambda x: x[0], reverse=True)
+        return similarities[:top_n]
