@@ -352,7 +352,7 @@ if __name__ == "__main__":
 
         profiler = cProfile.Profile()
         profiler.enable()
-        main()
+        main(n_imgs, imgset)
         profiler.disable()
         stats = pstats.Stats(profiler).sort_stats("cumtime")
         prof_stats_file = "profiler-stats"
@@ -363,4 +363,4 @@ if __name__ == "__main__":
         # snakeviz prof_stats_file
 
     else:
-        main()
+        main(n_imgs, imgset)
