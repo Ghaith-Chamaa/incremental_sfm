@@ -17,44 +17,25 @@ class Point3DWithViews:
 
 
 class ReconstructionPipeline:
-    def __init__(self): 
-        # img_adjacency: np.ndarray, matches: List[List[List[cv2.DMatch]]], keypoints: List[List[cv2.KeyPoint]], K:np.ndarray
-        pass
-        # """_summary_
-
-        # Args:
-        #     img_adjacency (np.ndarray): _description_
-        #     matches (List[List[List[cv2.DMatch]]]): _description_
-        #     keypoints (List[List[cv2.KeyPoint]]): _description_
-        #     K (np.ndarray): _description_
-        # """
-        # self.img_adjacency = img_adjacency
-        # self.matches = matches
-        # self.keypoints = keypoints
-        # self.K = K
-        
-    # --- Image Pair Selection Functions ---
-    def best_img_pair(self, img_adjacency: np.ndarray,
-                    matches: List[List[List[cv2.DMatch]]],
-                    keypoints: List[List[cv2.KeyPoint]],
-                    K: np.ndarray,
-                    top_x_perc: float = 0.1) -> Optional[Tuple[int, int]]:
-        """
-        Select the initial image pair for reconstruction by choosing the pair with sufficient matches
-        and the largest relative rotation.
+    def __init__(self, img_adjacency: np.ndarray, matches: List[List[List[cv2.DMatch]]], keypoints: List[List[cv2.KeyPoint]], K:np.matrix):
+        """_summary_
 
         Args:
-            img_adjacency (np.ndarray): Binary adjacency matrix (N x N) indicating matching images.
-            matches (List[List[List[cv2.DMatch]]]): NxN list where matches[i][j] is a list of cv2.DMatch objects between images i and j.
-            keypoints (List[List[cv2.KeyPoint]]): List of length N, where keypoints[i] is a list of cv2.KeyPoint objects for image i.
-            K (np.ndarray): Camera intrinsic matrix (3x3).
-            top_x_perc (float): Percentile threshold to filter top matching image pairs.
-
-        Returns:
-            Optional[Tuple[int, int]]: Tuple of image indices forming the best initial pair, or None if none found.
+            img_adjacency (np.ndarray): _description_
+            matches (List[List[List[cv2.DMatch]]]): _description_
+            keypoints (List[List[cv2.KeyPoint]]): _description_
+            K (np.ndarray): _description_
         """
-        num_matches = [len(matches[i][j]) for i in range(img_adjacency.shape[0])
-                    for j in range(img_adjacency.shape[1]) if img_adjacency[i][j] == 1]
+        self.img_adjacency = img_adjacency
+        self.matches = matches
+        self.keypoints = keypoints
+        self.K = K
+        
+    # --- Image Pair Selection Functions ---
+    def best_img_pair(self,
+                    top_x_perc: float = 0.2) -> Optional[Tuple[int, int]]:
+        num_matches = [len(self.matches[i][j]) for i in range(self.img_adjacency.shape[0])
+                    for j in range(self.img_adjacency.shape[1]) if self.img_adjacency[i][j] == 1]
 
         if not num_matches:
             return None
@@ -66,12 +47,12 @@ class ReconstructionPipeline:
         best_rot_angle = 0.0
         best_pair = None
 
-        for i in range(img_adjacency.shape[0]):
-            for j in range(img_adjacency.shape[1]):
-                if img_adjacency[i][j] == 1 and len(matches[i][j]) > min_matches:
-                    kpts_i, kpts_j, _, _ = self.get_aligned_kpts(i, j, keypoints, matches)
-                    E, _ = cv2.findEssentialMat(kpts_i, kpts_j, K, cv2.FM_RANSAC, 0.999, 1.0)
-                    points, R1, t1, mask = cv2.recoverPose(E, kpts_i, kpts_j, K)
+        for i in range(self.img_adjacency.shape[0]):
+            for j in range(self.img_adjacency.shape[1]):
+                if self.img_adjacency[i][j] == 1 and len(self.matches[i][j]) > min_matches:
+                    kpts_i, kpts_j, _, _ = self.get_aligned_kpts(i, j, self.keypoints, self.matches)
+                    E, _ = cv2.findEssentialMat(kpts_i, kpts_j, self.K, cv2.FM_RANSAC, 0.999, 1.0)
+                    points, R1, t1, mask = cv2.recoverPose(E, kpts_i, kpts_j, self.K)
                     rvec, _ = cv2.Rodrigues(R1)
                     rot_angle = float(np.sum(np.abs(rvec)))
                     if (rot_angle > best_rot_angle or best_pair is None) and points == len(kpts_i):
@@ -130,7 +111,7 @@ class ReconstructionPipeline:
                                         t1: np.ndarray,
                                         R2: np.ndarray,
                                         t2: np.ndarray,
-                                        K: np.ndarray,
+                                        K: np.matrix,
                                         points3d: List[Point3DWithViews],
                                         idx1: int,
                                         idx2: int,
@@ -202,38 +183,20 @@ class ReconstructionPipeline:
 
         return points3d
 
-    def initialize_reconstruction(self, 
-                                  keypoints: List[List[cv2.KeyPoint]],
-                                matches: List[List[List[cv2.DMatch]]],
-                                K: np.ndarray,
+    def initialize_reconstruction(self,
                                 img_idx1: int,
                                 img_idx2: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, List[Point3DWithViews]]:
-        """
-        Solve for pose of initial image pair and triangulate points seen by them.
-
-        Args:
-            keypoints (List[List[cv2.KeyPoint]]): List of lists of cv2.Keypoint objects. keypoints[i] is list for image i.
-            matches (List[List[List[cv2.DMatch]]]): List of lists of lists where matches[i][j][k] is the kth cv2.Dmatch object for images i and j.
-            K (np.ndarray): Intrinsics matrix.
-            img_idx1 (int): Index of left image.
-            img_idx2 (int): Index of right image.
-
-        Returns:
-            Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, List[Point3DWithViews]]:
-            Rotation and translation of first and second images, and list of triangulated points.
-        """
-        kpts_i, kpts_j, kpts_i_idxs, kpts_j_idxs = self.get_aligned_kpts(img_idx1, img_idx2, keypoints, matches)
-        E, _ = cv2.findEssentialMat(kpts_i, kpts_j, K, cv2.FM_RANSAC, 0.999, 1.0)
-        points, R1, t1, mask = cv2.recoverPose(E, kpts_i, kpts_j, K)
+        kpts_i, kpts_j, kpts_i_idxs, kpts_j_idxs = self.get_aligned_kpts(img_idx1, img_idx2, self.keypoints, self.matches)
+        E, _ = cv2.findEssentialMat(kpts_i, kpts_j, self.K, cv2.FM_RANSAC, 0.999, 1.0)
+        points, R1, t1, mask = cv2.recoverPose(E, kpts_i, kpts_j, self.K)
         assert abs(np.linalg.det(R1)) - 1 < 1e-7
 
         R0 = np.eye(3)
-        
         t0 = np.zeros((3, 1))
 
         points3d_with_views = []
         points3d_with_views = self.triangulate_points_and_reproject(
-            R0, t0, R1, t1, K, points3d_with_views, img_idx1, img_idx2, kpts_i, kpts_j, kpts_i_idxs, kpts_j_idxs, compute_reproj=False)
+            R0, t0, R1, t1, self.K, points3d_with_views, img_idx1, img_idx2, kpts_i, kpts_j, kpts_i_idxs, kpts_j_idxs, compute_reproj=False)
 
         return R0, t0, R1, t1, points3d_with_views
 

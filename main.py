@@ -74,9 +74,9 @@ img_adjacency, list_of_img_pairs  = feam_pipeline.connectivity(matches)
 
 
 ### This cell initializes the reconstruction
-rec_pipeline = ReconstructionPipeline()
-best_pair = rec_pipeline.best_img_pair(img_adjacency, matches, keypoints, K, top_x_perc=0.2)
-R0, t0, R1, t1, points3d_with_views = rec_pipeline.initialize_reconstruction(keypoints, matches, K, best_pair[0], best_pair[1])
+rec_pipeline = ReconstructionPipeline(img_adjacency, matches, keypoints, K)
+best_pair = rec_pipeline.best_img_pair(top_x_perc=0.2)
+R0, t0, R1, t1, points3d_with_views = rec_pipeline.initialize_reconstruction(best_pair[0], best_pair[1])
 
 R_mats = {best_pair[0]: R0, best_pair[1]: R1}
 t_vecs = {best_pair[0]: t0, best_pair[1]: t1}
