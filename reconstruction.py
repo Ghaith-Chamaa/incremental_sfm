@@ -19,7 +19,7 @@ def best_img_pair(img_adjacency: np.ndarray,
                     matches: List,
                     keypoints: List,
                     K: np.ndarray,
-                    top_x_perc: float = 0.2) -> Tuple:
+                    top_x_perc: float = 0.1) -> Tuple:
     """
     Selects the initial image pair for reconstruction by choosing the pair with sufficient matches
     and the largest relative rotation.
@@ -106,50 +106,62 @@ def get_aligned_kpts(i: int,
 
     return pts_i, pts_j, idxs_i, idxs_j
 
-def triangulate_points_and_reproject(R_l, t_l, R_r, t_r, K, points3d_with_views, img_idx1, img_idx2, kpts_i, kpts_j, kpts_i_idxs, kpts_j_idxs, reproject=True):
+def triangulate_points_and_reproject(R1: np.ndarray,
+                               t1: np.ndarray,
+                               R2: np.ndarray,
+                               t2: np.ndarray,
+                               K: np.ndarray,
+                               points3d: List,
+                               idx1: int,
+                               idx2: int,
+                               pts_i: np.ndarray,
+                               pts_j: np.ndarray,
+                               idxs_i: List,
+                               idxs_j: List,
+                               compute_reproj: bool = True):
     """
-    Triangulate points given 2D correspondences as well as camera parameters.
+    Triangulates 3D points from two views and optionally computes reprojection errors.
 
-    :param R_l: Rotation matrix for left image
-    :param t_l: Translation vector for left image
-    :param R_r: Rotation matrix for right image
-    :param t_r: Translation vector for right image
-    :param K: Intrinsics matrix
-    :param points3d_with_views: List of Point3D_with_views objects. Will have new points appended to it
-    :param img_idx1: Index of left image
-    :param img_idx2: Index of right image
-    :param kpts_i: List of index-aligned keypoint coordinates in left image
-    :param kpts_j: List of index-aligned keypoint coordinates in right image
-    :param kpts_i_idxs: Indexes of keypoints for left image
-    :param kpts_j_idxs: Indexes of keypoints for right image
-    :param reproject: Boolean. True if reprojection errors desired
+    Args:
+        R1, t1: Pose of image idx1.
+        R2, t2: Pose of image idx2.
+        K: Intrinsics.
+        points3d: List to append new Point3DWithViews.
+        idx1, idx2: Image indices.
+        pts_i, pts_j: Matched keypoint arrays (2xN).
+        idxs_i, idxs_j: Corresponding keypoint indices.
+        compute_reproj: Flag to compute reprojection error.
+
+    Returns:
+        If compute_reproj: (points3d, errors, avg_err1, avg_err2)
+        else: points3d
     """
 
-    print(f"Triangulating: {len(kpts_i)} points.")
-    P_l = np.dot(K, np.hstack((R_l, t_l)))
-    P_r = np.dot(K, np.hstack((R_r, t_r)))
+    # Build projection matrices
+    P_l = np.dot(K, np.hstack((R1, t1)))
+    P_r = np.dot(K, np.hstack((R2, t2)))
 
-    kpts_i = np.squeeze(kpts_i)
+    kpts_i = np.squeeze(pts_i)
     kpts_i = kpts_i.transpose()
     kpts_i = kpts_i.reshape(2,-1)
-    kpts_j = np.squeeze(kpts_j)
+    kpts_j = np.squeeze(pts_j)
     kpts_j = kpts_j.transpose()
     kpts_j = kpts_j.reshape(2,-1)
 
     point_4d_hom = cv2.triangulatePoints(P_l, P_r, kpts_i, kpts_j)
     points_3D = cv2.convertPointsFromHomogeneous(point_4d_hom.transpose())
     for i in range(kpts_i.shape[1]):
-        source_2dpt_idxs = {img_idx1:kpts_i_idxs[i], img_idx2:kpts_j_idxs[i]}
+        source_2dpt_idxs = {idx1:idxs_i[i], idx2:idxs_j[i]}
         pt = Point3D_with_views(points_3D[i], source_2dpt_idxs)
-        points3d_with_views.append(pt)
+        points3d.append(pt)
 
-    if reproject:
+    if compute_reproj:
         kpts_i = kpts_i.transpose()
         kpts_j = kpts_j.transpose()
-        rvec_l, _ = cv2.Rodrigues(R_l)
-        rvec_r, _ = cv2.Rodrigues(R_r)
-        projPoints_l, _ = cv2.projectPoints(points_3D, rvec_l, t_l, K, distCoeffs=np.array([]))
-        projPoints_r, _ = cv2.projectPoints(points_3D, rvec_r, t_r, K, distCoeffs=np.array([]))
+        rvec_l, _ = cv2.Rodrigues(R1)
+        rvec_r, _ = cv2.Rodrigues(R2)
+        projPoints_l, _ = cv2.projectPoints(points_3D, rvec_l, t1, K, distCoeffs=np.array([]))
+        projPoints_r, _ = cv2.projectPoints(points_3D, rvec_r, t2, K, distCoeffs=np.array([]))
         delta_l , delta_r = [], []
         for i in range(len(projPoints_l)):
             delta_l.append(abs(projPoints_l[i][0][0] - kpts_i[i][0]))
@@ -158,12 +170,12 @@ def triangulate_points_and_reproject(R_l, t_l, R_r, t_r, K, points3d_with_views,
             delta_r.append(abs(projPoints_r[i][0][1] - kpts_j[i][1]))
         avg_error_l = sum(delta_l)/len(delta_l)
         avg_error_r = sum(delta_r)/len(delta_r)
-        print(f"Average reprojection error for just-triangulated points on image {img_idx1} is:", avg_error_l, "pixels.")
-        print(f"Average reprojection error for just-triangulated points on image {img_idx2} is:", avg_error_r, "pixels.")
+        print(f"Average reprojection error for just-triangulated points on image {idx1} is:", avg_error_l, "pixels.")
+        print(f"Average reprojection error for just-triangulated points on image {idx2} is:", avg_error_r, "pixels.")
         errors = list(zip(delta_l, delta_r))
-        return points3d_with_views, errors, avg_error_l, avg_error_r
+        return points3d, errors, avg_error_l, avg_error_r
 
-    return points3d_with_views
+    return points3d
 
 def initialize_reconstruction(keypoints, matches, K, img_idx1, img_idx2):
     """
@@ -185,7 +197,7 @@ def initialize_reconstruction(keypoints, matches, K, img_idx1, img_idx2):
 
     points3d_with_views = []
     points3d_with_views = triangulate_points_and_reproject(
-        R0, t0, R1, t1, K, points3d_with_views, img_idx1, img_idx2, kpts_i, kpts_j, kpts_i_idxs, kpts_j_idxs, reproject=False)
+        R0, t0, R1, t1, K, points3d_with_views, img_idx1, img_idx2, kpts_i, kpts_j, kpts_i_idxs, kpts_j_idxs, compute_reproj=False)
 
     return R0, t0, R1, t1, points3d_with_views
 

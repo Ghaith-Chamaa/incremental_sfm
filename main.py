@@ -52,9 +52,6 @@ def visualize_sfm_open3d(points_3d):
 
 
 
-
-
-
 n_imgs = 46  # 46 if imgset = 'templering', 49 if imgset = 'Viking'
 imgset = "templeRing"
 K = np.matrix("1520.40 0.00 302.32; 0.00 1525.90 246.87; 0.00 0.00 1.00")
@@ -77,7 +74,7 @@ img_adjacency, list_of_img_pairs  = pipeline.connectivity(matches)
 
 
 ### This cell initializes the reconstruction
-best_pair = r.best_img_pair(img_adjacency, matches, keypoints, K, top_x_perc=0.2)
+best_pair = r.best_img_pair(img_adjacency, matches, keypoints, K, top_x_perc=0.1)
 R0, t0, R1, t1, points3d_with_views = r.initialize_reconstruction(keypoints, matches, K, best_pair[0], best_pair[1])
 
 R_mats = {best_pair[0]: R0, best_pair[1]: R1}
@@ -115,11 +112,11 @@ while len(unresected_imgs) > 0:
     if resected_idx < unresected_idx:
         kpts1, kpts2, kpts1_idxs, kpts2_idxs = r.get_aligned_kpts(resected_idx, unresected_idx, keypoints, matches, mask=triangulation_status)
         if np.sum(triangulation_status) > 0: #at least 1 point needs to be triangulated
-            points3d_with_views, tri_errors, avg_tri_err_l, avg_tri_err_r = r.triangulate_points_and_reproject(R_res, t_res, R_new, t_new, K, points3d_with_views, resected_idx, unresected_idx, kpts1, kpts2, kpts1_idxs, kpts2_idxs, reproject=True)
+            points3d_with_views, tri_errors, avg_tri_err_l, avg_tri_err_r = r.triangulate_points_and_reproject(R_res, t_res, R_new, t_new, K, points3d_with_views, resected_idx, unresected_idx, kpts1, kpts2, kpts1_idxs, kpts2_idxs, compute_reproj=True)
     else:
         kpts1, kpts2, kpts1_idxs, kpts2_idxs = r.get_aligned_kpts(unresected_idx, resected_idx, keypoints, matches, mask=triangulation_status)
         if np.sum(triangulation_status) > 0: #at least 1 point needs to be triangulated
-            points3d_with_views, tri_errors, avg_tri_err_l, avg_tri_err_r = r.triangulate_points_and_reproject(R_new, t_new, R_res, t_res, K, points3d_with_views, unresected_idx, resected_idx, kpts1, kpts2, kpts1_idxs, kpts2_idxs, reproject=True)
+            points3d_with_views, tri_errors, avg_tri_err_l, avg_tri_err_r = r.triangulate_points_and_reproject(R_new, t_new, R_res, t_res, K, points3d_with_views, unresected_idx, resected_idx, kpts1, kpts2, kpts1_idxs, kpts2_idxs, compute_reproj=True)
     
     if 0.8 < perc_inliers < 0.95 or 5 < avg_tri_err_l < 10 or 5 < avg_tri_err_r < 10: 
         #If % of inlers from Pnp is too low or triangulation error on either image is too high, bundle adjust
