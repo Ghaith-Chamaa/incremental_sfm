@@ -90,6 +90,103 @@ SfM estimates the 3D structure of a scene (a set of 3D points) and the motion (p
   </tr>
 </table>
 
+we have done an experiment on SIFT by changing its paramters to see the effect
+
+<table align="center">
+  <tr>
+    <td align="center">
+      <img src="assets/images/sift/experiment 1/image 1.png" alt="Top Left" width="400">
+    </td>
+    <td align="center">
+      <img src="assets/images/sift/experiment 1/image 2.png" alt="Top Right" width="400">
+    </td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center">
+      <em>setting nfeatures = 0, nOctaveLayers = 0, contrastThreh = 0.04, edgeThres = 10 and sigma = 1.6</em>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="assets/images/sift/experiment 2/image 1.png" alt="Bottom Left" width="400">
+    </td>
+    <td align="center">
+      <img src="assets/images/sift/experiment 2/image 2.png" alt="Bottom Right" width="400">
+    </td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center">
+      <em>setting nfeatures = 500, nOctaveLayers = 3, contrastThreh = 0.08, edgeThres = 5 and sigma = 1.6</em>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="assets/images/sift/experiment 3/image 1.png" alt="Bottom Left" width="400">
+    </td>
+    <td align="center">
+      <img src="assets/images/sift/experiment 3/image 2.png" alt="Bottom Right" width="400">
+    </td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center">
+      <em>setting nfeatures = 0, nOctaveLayers = 5, contrastThreh = 0.01, edgeThres = 20 and sigma = 1.6</em>
+    </td>
+  </tr>
+</table>
+
+## SIFT Parameter Discussion: Defaults vs. Experiments
+
+The default SIFT parameters generally "perform better" (i.e., are more broadly useful) than our experimental settings because they represent a carefully optimized balance for robust feature detection across diverse images.
+
+**Core Idea of Default SIFT Parameters:**
+*   Achieve a good **balance** between:
+    *   **Quantity:** Enough keypoints for representation.
+    *   **Quality/Stability:** Reliable re-detection under transformations.
+    *   **Distinctiveness:** Unique descriptors for accurate matching.
+    *   **Efficiency:** Avoid an overwhelming number of useless keypoints.
+
+---
+
+### Comparison:
+
+**1. Default Parameters (Balanced & Robust - Our "Experiment 1")**
+   *   `nfeatures = 0` (all passing threshold)
+   *   `nOctaveLayers = 3`
+   *   `contrastThreshold = 0.04`
+   *   `edgeThreshold = 10`
+   *   `sigma = 1.6`
+   *   **Outcome:** Good quantity of reasonably stable and distinctive features. General-purpose.
+
+**2. Experiment 2 (Fewer, More "Robust" but Potentially Too Few)**
+   *   `contrastThreshold = 0.08` (↑ More strict)
+   *   `edgeThreshold = 5` (↓ More strict on edges)
+   *   **Why often "worse" than default for general tasks:**
+        *   **Too Restrictive:** Discards many perfectly good, matchable features that aren't *extremely* prominent or perfectly corner-like.
+        *   **Insufficient Keypoints:** Can lead to too few keypoints for robust matching or geometric estimation, especially in images not rich in very high-contrast textures.
+        *   **Over-Prioritizes Extreme Stability:** Sacrifices quantity, which is often crucial.
+
+**3. Experiment 3 (More Features, Including Weaker/Edge-like, Potentially Noisy)**
+   *   `nOctaveLayers = 5` (↑ Finer scale sampling)
+   *   `contrastThreshold = 0.01` (↓ Less strict)
+   *   `edgeThreshold = 20` (↑ Less strict on edges)
+   *   **Why often "worse" than default for general tasks:**
+        *   **Too Permissive:** Allows a flood of low-contrast, noisy, and unstable keypoints.
+        *   **More Ambiguous Features:** Retains more edge-like features, which are less distinctive and can lead to more false matches.
+        *   **Increased Computational Load:** More keypoints (many bad) to process and match.
+        *   **Lower Match Quality:** Higher ratio of "bad" keypoints makes the matching stage less reliable.
+        *   **Over-Prioritizes Quantity:** Sacrifices quality and stability.
+
+---
+
+**Summary of Why Defaults are Generally Preferred:**
+
+*   **Robust Trade-off:** Defaults strike a well-tested balance. They filter out significant noise and unstable features (unlike Exp3) without being overly aggressive and discarding useful information (unlike Exp2).
+*   **Generalizability:** Designed to work well across a wide variety of image types and conditions.
+*   **Proven Effectiveness:** The values are derived from extensive research and empirical validation (Lowe's work).
+
+**When to Deviate from Defaults:**
+Tuning parameters *can* be beneficial if you have specific knowledge about your image set or application (e.g., images are known to be extremely low contrast, or you *only* need a few super-strong features). However, for general use, the defaults provide a reliable and effective starting point.
+
 2.  **Lowe's Ratio Test**: A heuristic for reliable feature matching. If the ratio of the distance to the best match (d1) and the second-best match (d2) from a k-NN search (k=2) is below a threshold (e.g., d1/d2 < 0.75), the match is considered distinctive.
 
 *Feature matching for Middlebury Dataset*
@@ -123,6 +220,69 @@ SfM estimates the 3D structure of a scene (a set of 3D points) and the motion (p
     </td>
   </tr>
 </table>
+
+we have also done an experiment on BFMATCHER by changing its paramters to see the effect
+
+<table align="center">
+  <tr>
+    <td align="center">
+      <img src="assets/images/bfmatcher/experiment 1/output.png" alt="Top Left" width="400">
+    </td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center">
+      <em>setting  norm to L1</em>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <img src="assets/images/bfmatcher/experiment 2/output.png" alt="Bottom Left" width="400">
+    </td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center">
+      <em>setting norm to L2</em>
+    </td>
+  </tr>
+</table>
+
+## Why L2 Norm (Euclidean Distance) is Better for Matching SIFT Descriptors
+
+The L2 norm is generally the superior choice for Brute-Force (BF) matching of SIFT descriptors due to the nature of SIFT features and the properties of the distance metric itself.
+
+**1. SIFT Descriptor Characteristics:**
+   *   **High-Dimensional Vectors:** SIFT descriptors are 128-dimensional vectors of floating-point numbers.
+   *   **Representation:** Each element represents normalized gradient orientation histograms from a local image patch.
+   *   **Euclidean Space:** These vectors can be conceptualized as points in a 128-dimensional Euclidean space.
+
+**2. L2 Norm (Euclidean Distance):**
+   *   **Definition:** `sqrt(sum((A_i - B_i)^2))` for vectors A and B.
+   *   **Meaning:** Calculates the "straight-line" distance between two points in Euclidean space.
+   *   **Intuition:** A smaller L2 distance implies greater similarity between the underlying image patches represented by the SIFT descriptors.
+
+**3. Reasons for L2 Norm's Superiority in BFMATCHER with SIFT:**
+
+   *   **Alignment with SIFT Design:**
+        *   The SIFT descriptor generation and normalization processes are designed such that Euclidean distance is a meaningful measure of patch similarity.
+
+   *   **Effective Similarity Measurement:**
+        *   The squaring of differences in L2 norm means larger discrepancies between vector components contribute more significantly to the total distance.
+        *   This effectively captures overall dissimilarity when image patches (and thus their SIFT descriptors) genuinely differ.
+
+   *   **Standard for Real-Valued Descriptors:**
+        *   For dense, real-valued feature vectors like SIFT (and SURF), L2 distance is the conventional and most theoretically sound choice for measuring similarity.
+
+**4. Comparison with L1 Norms for SIFT:**
+
+   *   **L1 Norm (Manhattan Distance - `sum(|A_i - B_i|)`):**
+        *   Computes the sum of absolute differences.
+        *   Can be slightly faster computationally.
+        *   May be more robust to outliers in *some specific* high-dimensional data scenarios.
+        *   **For SIFT:** Generally less effective than L2. L2's emphasis on larger differences often leads to more accurate discrimination for SIFT's normalized gradient histograms. While usable, L2 is preferred for match quality.
+
+**Conclusion:**
+
+The L2 norm (Euclidean distance) is the standard and most effective distance metric for matching SIFT descriptors because it aligns with the SIFT algorithm's design principles and accurately reflects perceptual similarity in the descriptor space. It provides a robust measure of how "close" two SIFT feature vectors are, leading to more reliable and accurate matches compared to other norms like L1 (for SIFT which is inappropriate).
 
 3.  **Fundamental Matrix ($F$) & Epipolar Geometry**:
     The fundamental matrix $F$ (3x3, rank 2) encodes the epipolar geometry: for corresponding points $\mathbf{x}, \mathbf{x'}$, $\mathbf{x'}^T F \mathbf{x} = 0$. It's estimated using RANSAC (e.g., 8-point algorithm) to filter outlier matches.
