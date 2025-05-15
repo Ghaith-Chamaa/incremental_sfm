@@ -20,8 +20,8 @@ class SIFTMatcher:
         """
         # Use the modern SIFT API
         self.sift = cv2.SIFT_create()
-        # L2 norm is recommended for SIFT descriptors
-        self.matcher = cv2.BFMatcher(cv2.NORM_L1)
+        # L2 norm is recommended for SIFT descriptors as per our experimentation
+        self.matcher = cv2.BFMatcher(cv2.NORM_L2)
         self.ratio_threshold = ratio_threshold
         self.min_matches = min_matches
         self.ransac_threshold = ransac_threshold

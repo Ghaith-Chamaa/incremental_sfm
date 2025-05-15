@@ -226,7 +226,6 @@ class ReconstructionPipeline:
                 return True
         return False
 
-
     def next_img_pair_to_grow_reconstruction(self, n_imgs, init_pair, resected_imgs, unresected_imgs, img_adjacency):
         """
         Given initial image pair, resect images between the initial ones, then extend reconstruction in both directions.
@@ -240,7 +239,7 @@ class ReconstructionPipeline:
 
         if len(unresected_imgs) == 0: raise ValueError('Should not check next image to resect if all have been resected already!')
         straddle = False
-        if init_pair[1] - init_pair[0] > n_imgs/2 : straddle = True #initial pair straddles "end" of the circle (ie if init pair is idxs (0, 49) for 50 images)
+        if init_pair[1] - init_pair[0] > n_imgs/2 : straddle = True
 
         init_arc = init_pair[1] - init_pair[0] + 1 # Number of images between and including initial pair
 
@@ -380,7 +379,7 @@ class ReconstructionPipeline:
              print(f"Error: Not enough points ({object_points.shape[0]}) for PnP after formatting.")
              return None, None
 
-        # flags: cv2.SOLVEPNP_SQPNP is robust and efficient (requires OpenCV >= 4.5.1)
+        # flags explored: cv2.SOLVEPNP_SQPNP is robust and efficient (requires OpenCV >= 4.5.1)
         #        cv2.SOLVEPNP_EPNP is a common alternative.
         #        cv2.SOLVEPNP_ITERATIVE is also an option if you want to match the previous inner call.
         success, rvec, tvec, inliers = cv2.solvePnPRansac(

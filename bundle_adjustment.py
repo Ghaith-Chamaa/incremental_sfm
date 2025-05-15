@@ -143,7 +143,7 @@ def do_BA(points3d_with_views, R_mats, t_vecs, resected_imgs, keypoints, K, ftol
         x_scale='jac',
         loss='linear',
         ftol=ftol,
-        xtol=1e-13,
+        xtol=1e-12,
         method='trf',
         args=(n_cameras, n_points, camera_indices, point_indices, points_2d, K)
     )

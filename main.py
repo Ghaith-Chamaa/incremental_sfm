@@ -12,7 +12,7 @@ from reconstruction import *
 from utils import *
 
 base_path = os.getcwd()
-USE_PYTORCH_OPTIMIZER = True
+USE_PYTORCH_OPTIMIZER = False
 SHOW_PLOTS_INTERACTIVELY = False
 SAVE_PLOTS = False
 
@@ -22,9 +22,9 @@ K = np.matrix("1520.40 0.00 302.32; 0.00 1525.90 246.87; 0.00 0.00 1.00")
 type_ = "png"
 
 # imgset = "dino"
-# n_imgs = 46
+# n_imgs = 363
 # K = np.matrix(
-#     "3310.400000 0.000000 316.730000; 0.000000 3325.500000 200.550000; 0.000000 0.000000 1.000000"
+#     "1520.40 0.00 302.32; 0.00 1525.90 246.87; 0.00 0.00 1.00"
 # )
 # type_ = "png"
 
@@ -55,7 +55,6 @@ matches_out_dir = os.path.join(output_plots_base_dir, "feature_matches")
 
 images = get_images(base_path, imgset, type_, n_imgs, "gray")
 images_color_for_plotting = get_images(base_path, imgset, type_, n_imgs)
-assert len(images) == n_imgs
 print(f"\n======== Using total {len(images)} images of dataset {imgset} ========\n\n\n")
 
 feam_pipeline = SIFTMatcher()
@@ -85,9 +84,7 @@ img_adjacency, list_of_img_pairs  = feam_pipeline.connectivity(matches)
 
 if SAVE_PLOTS:
     print(f"\n======== Plotting and Saving Filtered Matches (example pairs) ========")
-    # Plot for a few example pairs that have matches
     num_matches_to_plot = 0
-    max_match_plots =  n_imgs # Limit the number of match plots
 
     for i in range(n_imgs):
         for j in range(i + 1, n_imgs):
@@ -106,7 +103,6 @@ if SAVE_PLOTS:
                 )
                 num_matches_to_plot += 1
 
-### This cell initializes the reconstruction
 rec_pipeline = ReconstructionPipeline(img_adjacency, matches, keypoints, K)
 best_pair = sorted(rec_pipeline.best_img_pair(top_x_perc=0.2))
 R0, t0, R1, t1, points3d_with_views = rec_pipeline.initialize_reconstruction(best_pair[0], best_pair[1])
@@ -121,12 +117,10 @@ avg_err = 0
 avg_tri_err_l = 0
 avg_tri_err_r = 0
 
-### This cell grows and refines the reconstruction 
 BA_chkpts = [3,4,5,6] + [int(6*(1.34**i)) for i in range(int(n_imgs/2))]
 iter = 0
 while len(unresected_imgs) > 0:
     
-    # NEW CALL (example):
     resected_idx, unresected_idx, prepend = rec_pipeline.next_img_pair_to_grow_reconstruction_scored(
         n_imgs, resected_imgs, unresected_imgs, 
         rec_pipeline.img_adjacency, # Pass from pipeline object
@@ -139,12 +133,7 @@ while len(unresected_imgs) > 0:
     if unresected_idx is None or resected_idx is None:
         print("No more suitable image pairs could be found by the selection strategy. Ending reconstruction.")
         break # Exit the while loop
-    
-    # resected_idx, unresected_idx, prepend = rec_pipeline.next_img_pair_to_grow_reconstruction(n_imgs, best_pair, resected_imgs, unresected_imgs, img_adjacency)
-    # if (resected_idx, unresected_idx) not in list_of_img_pairs:
-    #     print(f"Skipping pair {resected_idx} vs {unresected_idx}")
-    #     unresected_imgs.remove(unresected_idx)
-    #     continue
+
     points3d_with_views, pts3d_for_pnp, pts2d_for_pnp, triangulation_status = rec_pipeline.get_correspondences_for_pnp(resected_idx, unresected_idx, points3d_with_views, matches, keypoints)
     MIN_PNP_POINTS_THRESHOLD = 6 # Or your preferred minimum
     if len(pts3d_for_pnp) < MIN_PNP_POINTS_THRESHOLD or len(pts2d_for_pnp) < MIN_PNP_POINTS_THRESHOLD:
@@ -169,14 +158,9 @@ while len(unresected_imgs) > 0:
     if R_new is None or t_new is None: # Check if PnP failed
         print(f"PnP failed for unresected image {unresected_idx} using resected image {resected_idx}. Skipping this attempt.")
         
-        # FIX: Remove the image from the unresected list to prevent an infinite loop
-        # on this specific image if it consistently fails PnP.
         if unresected_idx in unresected_imgs:
             unresected_imgs.remove(unresected_idx)
-            print(f"Image {unresected_idx} has been removed from the queue of unresected images due to PnP failure.")
-        # else: # Should ideally not happen if unresected_idx was chosen from unresected_imgs
-            # print(f"Warning: Image {unresected_idx} was not in unresected_imgs when PnP failed.")
-            
+            print(f"Image {unresected_idx} has been removed from the queue of unresected images due to PnP failure.")            
         continue # Continue to the next iteration of the while loop
     
     # --- If PnP was successful, proceed ---
@@ -243,7 +227,6 @@ while len(unresected_imgs) > 0:
 
 # --- BUNDLE ADJUSTMENT COMPLETE ---
 
-### This cell visualizes the pointcloud
 num_voxels = 100 #Set to 100 for faster visualization, 200 for higher resolution.
 x, y, z = [], [], []
 for pt3 in points3d_with_views:
@@ -264,7 +247,6 @@ else:
 # Define where to save COLMAP files
 colmap_output_dir = os.path.join(base_path, "colmap_export", imgset) # example path
 
-# Get image paths again or pass from where `get_images` was called
 images_paths_for_export = sorted(
     glob.glob(
         os.path.join(base_path, "datasets", imgset) + "/*." + type_, # Assuming "png" or your img_format
@@ -353,7 +335,6 @@ else:
 # Define where to save COLMAP files
 colmap_output_dir = os.path.join(base_path, "colmap_export", imgset) # example path
 
-# Get image paths again or pass from where `get_images` was called
 images_paths_for_export = sorted(
     glob.glob(
         os.path.join(base_path, "datasets", imgset) + "/*." + type_, # Assuming "png" or your img_format
