@@ -5,36 +5,44 @@ This repository implements an **Incremental Structure from Motion (SfM)** pipeli
 ---
 
 ## Table of Contents
-1.  [Introduction](#introduction)
-2.  [Core Concepts and Theory](#core-concepts-and-theory)
-    *   [Structure from Motion Overview](#structure-from-motion-overview)
-    *   [Key Theoretical Components](#key-theoretical-components)
-    *   [Mathematical Formulation: Bundle Adjustment](#mathematical-formulation-bundle-adjustment)
-3.  [Methodology and Implementation](#methodology-and-implementation)
-    *   [1. Dataset and Calibration](#1-dataset-and-calibration)
-    *   [2. Feature Matching (`matching.py`)](#2-feature-matching-matchingpy)
-    *   [3. Incremental Reconstruction (`reconstruction.py`)](#3-incremental-reconstruction-reconstructionpy)
-        *   [Data Structures: `Point3DWithViews`](#data-structures-point3dwithviews)
-        *   [Initial Pair Selection](#initial-pair-selection)
-        *   [Initial Reconstruction](#initial-reconstruction)
-        *   [Iterative Scene Growth](#iterative-scene-growth)
-    *   [4. Bundle Adjustment (`bundle_adjustment.py`)](#4-bundle-adjustment-bundle_adjustmentpy)
-        *   [Parameterization and Sparsity](#parameterization-and-sparsity)
-        *   [SciPy-based BA (`do_BA`)](#scipy-based-ba-do_ba)
-        *   [PyTorch-based BA (`do_BA_pytorch`)](#pytorch-based-ba-do_ba_pytorch)
-    *   [5. Point Cloud Colorization & COLMAP Export](#5-point-cloud-colorization--colmap-export)
-4.  [Results](#results)
-5.  [Discussion](#discussion)
-    *   [Strengths](#strengths)
-    *   [Limitations](#limitations)
-    *   [Future Improvements](#future-improvements)
-6.  [How to Run the Code](#how-to-run-the-code)
-    *   [Prerequisites](#prerequisites)
-    *   [Directory Structure](#directory-structure)
-    *   [Configuration (`main.py`)](#configuration-mainpy)
-    *   [Running the Pipeline](#running-the-pipeline)
-    *   [Output and Visualization](#output-and-visualization)
-7.  [References](#references)
+- [Incremental Structure from Motion (SfM) Project](#incremental-structure-from-motion-sfm-project)
+  - [Table of Contents](#table-of-contents)
+  - [Introduction](#introduction)
+  - [Core Concepts and Theory](#core-concepts-and-theory)
+    - [Structure from Motion Overview](#structure-from-motion-overview)
+    - [Key Theoretical Components](#key-theoretical-components)
+  - [SIFT Parameter Discussion: Defaults vs. Experiments](#sift-parameter-discussion-defaults-vs-experiments)
+    - [Comparison:](#comparison)
+  - [Why L2 Norm (Euclidean Distance) is Better for Matching SIFT Descriptors](#why-l2-norm-euclidean-distance-is-better-for-matching-sift-descriptors)
+    - [Mathematical Formulation: Bundle Adjustment](#mathematical-formulation-bundle-adjustment)
+    - [Solving Bundle Adjustment: Optimization Algorithms](#solving-bundle-adjustment-optimization-algorithms)
+  - [Methodology and Implementation](#methodology-and-implementation)
+    - [1. Dataset and Calibration](#1-dataset-and-calibration)
+    - [2. Feature Matching (`matching.py`)](#2-feature-matching-matchingpy)
+    - [3. Incremental Reconstruction (`reconstruction.py`)](#3-incremental-reconstruction-reconstructionpy)
+      - [Data Structures: `Point3DWithViews`](#data-structures-point3dwithviews)
+      - [Initial Pair Selection (`best_img_pair`)](#initial-pair-selection-best_img_pair)
+      - [Initial Reconstruction (`initialize_reconstruction`)](#initial-reconstruction-initialize_reconstruction)
+      - [Iterative Scene Growth](#iterative-scene-growth)
+    - [4. Bundle Adjustment (`bundle_adjustment.py`)](#4-bundle-adjustment-bundle_adjustmentpy)
+      - [Parameterization and Sparsity](#parameterization-and-sparsity)
+      - [SciPy-based BA (`do_BA`)](#scipy-based-ba-do_ba)
+      - [PyTorch-based BA (`do_BA_pytorch`)](#pytorch-based-ba-do_ba_pytorch)
+    - [5. Point Cloud Colorization \& COLMAP Export](#5-point-cloud-colorization--colmap-export)
+  - [The code also visualizes the colorization and camera poses direclty in Open3D.](#the-code-also-visualizes-the-colorization-and-camera-poses-direclty-in-open3d)
+  - [Results](#results)
+  - [Discussion](#discussion)
+    - [Strengths](#strengths)
+    - [Limitations](#limitations)
+    - [Future Improvements](#future-improvements)
+  - [How to Run the Code](#how-to-run-the-code)
+    - [Prerequisites](#prerequisites)
+    - [Directory Structure](#directory-structure)
+    - [Steps to Run](#steps-to-run)
+    - [Configuration (`main.py`)](#configuration-mainpy)
+    - [Running the Pipeline](#running-the-pipeline)
+    - [Output and Visualization](#output-and-visualization)
+  - [References](#references)
 
 ---
 
@@ -527,10 +535,20 @@ The pipeline produces:
 
 **Sample Visualizations:**
 
-*   **Custom Dataset Reconstruction:**
+*   **Custom Dataset Reconstruction [Robot from Lab]:**
     ![](assets/gifs/custom_data.gif)
     
     *Caption: Reconstruction of a custom object dataset.*
+
+*   **Custom Dataset Reconstruction:**
+    ![](assets/gifs/pharm_at_mollet.mp4)
+    
+    *Caption: Reconstruction of Pharmacy at molette in Le Creusot.*
+
+*   **Custom Dataset Reconstruction:**
+    ![](assets/gifs/corn_fla_box.mp4)
+    
+    *Caption: Reconstruction of corn flakes cereal box.*
 
 *   **Middlebury Dataset Reconstruction:**
     ![](assets/gifs/Middlebury.gif)
@@ -544,7 +562,7 @@ The pipeline produces:
 
 *   **Other Datasets (COLMAP Visualization):**
     ![](assets/gifs/rabbit.gif)
-    ![](assets/gifs/port_amp.gif)
+    ![](assets/gifs/port_amp.gif) [Credit: Hassaan Ahmad for Dataset]
 
 ---
 
@@ -567,18 +585,18 @@ The pipeline produces:
 <table align="center">
   <tr>
     <td align="center">
-      <img src="assets/images/checkerboard1.jpg" alt="Top Left" width="250">
+      <img src="assets/images/checkerboard1.jpg" alt="Top Left" width="500">
     </td>
     <td align="center">
-      <img src="assets/images/checkerboard2.jpg" alt="Top Right" width="250">
+      <img src="assets/images/checkerboard2.jpg" alt="Top Right" width="500">
     </td>
   </tr>
   <tr>
     <td align="center">
-      <img src="assets/images/checkerboard3.jpg" alt="Bottom Left" width="250">
+      <img src="assets/images/checkerboard3.jpg" alt="Bottom Left" width="500">
     </td>
     <td align="center">
-        <img src="assets/images/checkerboard4.jpg" alt="Bottom Right" width="250">
+        <img src="assets/images/checkerboard4.jpg" alt="Bottom Right" width="500">
     </td>
   </tr>
 </table> 
@@ -671,7 +689,14 @@ Modify the global variables at the top of `main.py`:
 -   **Open3D Visualization**: `main.py` calls `visualize_sfm_open3d(vpoints)` for direct visualization. `vpoints` are filtered 3D points.
 
 ## References
+Huge thanks to the MOOC and openn-source contributers. This work is highly based on the following papers and implementations:
 1. Fusiello, A. *Lecture Notes on Computer Vision: 3D Reconstruction Techniques*. University of Udine, IT.
 2. Geiger, A. *Lecture Notes on Computer Vision, Lecture 3 – Structure-from-Motion*. Autonomous Vision Group, University of Tübingen.
-3. Stachniss, C. *Lecture Notes on Projective 3-Point (P3P) Algorithm / Spatial Resection*. University of Bonn.
-4. Cremers, D. *Lecture Notes on Computer Vision II: Multiple View Geometry*. Technical University of Munich.
+3. https://github.com/rshilliday/sfm
+4. https://github.com/colmap/glomap
+5. https://medium.com/@aybukeyalcinerr/bag-of-visual-words-bovw-db9500331b2f
+6. https://docs.opencv.org/4.x/d5/d1f/calib3d_solvePnP.html
+7. https://medium.com/@abdulhaq.ah/solvepnpransac-and-optimization-47a0683227b1
+8. https://docs.opencv.org/4.x/dc/dbb/tutorial_py_calibration.html
+9.  Stachniss, C. *Lecture Notes on Projective 3-Point (P3P) Algorithm / Spatial Resection*. University of Bonn.
+10. Cremers, D. *Lecture Notes on Computer Vision II: Multiple View Geometry*. Technical University of Munich.
