@@ -62,11 +62,10 @@ def visualize_point_cloud(
         print(f"Error in visualize_point_cloud: {e}")
 
 
-def main():
-    ### This cell does matching between images and outlier removal
-    n_imgs = 46  # 46 if imgset = 'templering', 49 if imgset = 'Viking'
+def main(n_imgs_, imgset_):
+    n_imgs = n_imgs_
 
-    images, keypoints, descriptors, K = m.find_features(n_imgs, imgset="templering")
+    images, keypoints, descriptors, K = m.find_features(n_imgs, imgset=imgset_)
 
     matcher = cv2.BFMatcher(cv2.NORM_L1)
     matches = m.find_matches(matcher, keypoints, descriptors)
@@ -79,7 +78,6 @@ def main():
 
     img_adjacency, list_of_img_pairs = m.create_img_adjacency_matrix(n_imgs, matches)
 
-    ### This cell initializes the reconstruction
     best_pair = r.best_img_pair(img_adjacency, matches, keypoints, K, top_x_perc=0.2)
     R0, t0, R1, t1, points3d_with_views = r.initialize_reconstruction(
         keypoints, matches, K, best_pair[0], best_pair[1]
@@ -93,7 +91,6 @@ def main():
     print("initial image pair:", resected_imgs)
     avg_err = 0
 
-    ### This cell grows and refines the reconstruction
     BA_chkpts = [3, 4, 5, 6] + [int(6 * (1.34**i)) for i in range(25)]
     while len(unresected_imgs) > 0:
         resected_idx, unresected_idx, prepend = r.next_img_pair_to_grow_reconstruction(
@@ -243,7 +240,6 @@ def main():
             f"Average reprojection error across all {len(resected_imgs)} resected images is {av} pixels"
         )
 
-    ### This cell visualizes the pointcloud
     num_voxels = 100  # Set to 100 for faster visualization, 200 for higher resolution.
     x, y, z = [], [], []
     for pt3 in points3d_with_views:
@@ -281,7 +277,10 @@ def main():
 
 if __name__ == "__main__":
 
+    imgset = "templering"
+    n_imgs = 46  # 46 if imgset = 'templering', 49 if imgset = 'Viking'
     profile_code = True
+
     if profile_code:
 
         # Installing the modules for profiling: !pip install snakeviz
@@ -296,7 +295,7 @@ if __name__ == "__main__":
         stats.dump_stats(prof_stats_file)
         stats.print_stats()
 
-        ## youb can visualize the stats with snakeviz using the follwing termianl command:
+        ## you can visualize the stats with snakeviz using the follwing termianl command:
         # snakeviz prof_stats_file
 
     else:

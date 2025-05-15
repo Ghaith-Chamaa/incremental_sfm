@@ -197,3 +197,17 @@ $$ x_i = \pi(K[R_i | t_i]X) $$
 3. **Books**: *Multiple View Geometry in Computer Vision* (Hartley & Zisserman).
 
 ---
+
+## **8. Steps to run**
+
+1. **Datasets**:
+	- Make sure youh have the folder named "datasets" inside the working directory and has one of the datasets from "Middlebury Temple Ring: https://vision.middlebury.edu/mview/data/"
+2. **Conda virtual environment**: You need to install conda and then create a virtiual environment:
+	- conda env create -n conda_venv_name -f environment.yml
+	- conda activate conda_venv_name
+	- conda install -c conda-forge libstdcxx-ng
+
+3. **Run main.py**: Set the local variables "imgset" and "n_imgs" according to the dataset you are using and run the following command inside the activtae dconda environment
+	- python3 main.py
+
+---
