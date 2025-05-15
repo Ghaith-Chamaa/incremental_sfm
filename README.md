@@ -78,21 +78,21 @@ SfM estimates the 3D structure of a scene (a set of 3D points) and the motion (p
 <table align="center">
   <tr>
     <td align="center">
-      <img src="assets/images/feat1.jpg" alt="Top Left" width="400">
+      <img src="assets/images/feat1.jpg" alt="Top Left" width="500">
       <br><em>SIFT Features for image 4 in Middlebury dataset</em>
     </td>
     <td align="center">
-      <img src="assets/images/feat2.jpg" alt="Top Right" width="400">
+      <img src="assets/images/feat2.jpg" alt="Top Right" width="500">
       <br><em>SIFT Features for image 24 in Middlebury dataset</em>
     </td>
   </tr>
   <tr>
     <td align="center">
-      <img src="assets/images/feat3.jpg" alt="Bottom Left" width="400">
+      <img src="assets/images/feat3.jpg" alt="Bottom Left" width="500">
       <br><em>SIFT Features for image 7 in custom dataset</em>
     </td>
     <td align="center">
-        <img src="assets/images/feat4.jpg" alt="Bottom Right" width="400">
+        <img src="assets/images/feat4.jpg" alt="Bottom Right" width="500">
         <br><em>SIFT Features for image 18 in custom dataset</em>
     </td>
   </tr>
@@ -103,10 +103,10 @@ we have done an experiment on SIFT by changing its paramters to see the effect
 <table align="center">
   <tr>
     <td align="center">
-      <img src="assets/images/sift/experiment 1/image 1.png" alt="Top Left" width="400">
+      <img src="assets/images/sift/experiment 1/image 1.png" alt="Top Left" width="1000">
     </td>
     <td align="center">
-      <img src="assets/images/sift/experiment 1/image 2.png" alt="Top Right" width="400">
+      <img src="assets/images/sift/experiment 1/image 2.png" alt="Top Right" width="1000">
     </td>
   </tr>
   <tr>
@@ -116,10 +116,10 @@ we have done an experiment on SIFT by changing its paramters to see the effect
   </tr>
   <tr>
     <td align="center">
-      <img src="assets/images/sift/experiment 2/image 1.png" alt="Bottom Left" width="400">
+      <img src="assets/images/sift/experiment 2/image 1.png" alt="Bottom Left" width="1000">
     </td>
     <td align="center">
-      <img src="assets/images/sift/experiment 2/image 2.png" alt="Bottom Right" width="400">
+      <img src="assets/images/sift/experiment 2/image 2.png" alt="Bottom Right" width="1000">
     </td>
   </tr>
   <tr>
@@ -129,10 +129,10 @@ we have done an experiment on SIFT by changing its paramters to see the effect
   </tr>
   <tr>
     <td align="center">
-      <img src="assets/images/sift/experiment 3/image 1.png" alt="Bottom Left" width="400">
+      <img src="assets/images/sift/experiment 3/image 1.png" alt="Bottom Left" width="1000">
     </td>
     <td align="center">
-      <img src="assets/images/sift/experiment 3/image 2.png" alt="Bottom Right" width="400">
+      <img src="assets/images/sift/experiment 3/image 2.png" alt="Bottom Right" width="1000">
     </td>
   </tr>
   <tr>
@@ -198,61 +198,32 @@ Tuning parameters *can* be beneficial if you have specific knowledge about your 
 2.  **Lowe's Ratio Test**: A heuristic for reliable feature matching. If the ratio of the distance to the best match (d1) and the second-best match (d2) from a k-NN search (k=2) is below a threshold (e.g., d1/d2 < 0.75), the match is considered distinctive.
 
 *Feature matching for Middlebury Dataset*
-<table align="center">
-  <tr>
-    <td align="center">
-      <img src="assets/images/match1.jpg" alt="Top Left" width="400">
-      <br><em>Filtered Matches after Lowe's Ratio between image 0 & 41</em>
-    </td>
-  </tr>
-  <tr>
-    <td align="center">
-      <img src="assets/images/match2.jpg" alt="Bottom Left" width="400">
-      <br><em>Filtered Matches after Lowe's Ratio between image 2 & 3</em>
-    </td>
-  </tr>
-</table>
+![](assets/images/match1.jpg)
+Filtered Matches after Lowe's Ratio between image 0 & 41
+![](assets/images/match2.jpg)
+Filtered Matches after Lowe's Ratio between image 2 & 3
+
 
 *Feature matching for Custom Dataset*
-<table align="center">
-  <tr>
-    <td align="center">
-      <img src="assets/images/match3.jpg" alt="Top Left" width="400">
-      <br><em>Filtered Matches after Lowe's Ratio between image 0 & 7</em>
-    </td>
-  </tr>
-  <tr>
-    <td align="center">
-      <img src="assets/images/match4.jpg" alt="Bottom Left" width="400">
-      <br><em>Filtered Matches after Lowe's Ratio between image 1 & 2</em>
-    </td>
-  </tr>
-</table>
+![](assets/images/match3.jpg)
+Filtered Matches after Lowe's Ratio between image 0 & 7
+![](assets/images/match4.jpg)
+Filtered Matches after Lowe's Ratio between image 1 & 2
+
 
 we have also done an experiment on BFMATCHER by changing its paramters to see the effect
+*Feature matching for Custom Dataset*
+![](assets/images/match3.jpg)
+Filtered Matches after Lowe's Ratio between image 0 & 7
+![](assets/images/match4.jpg)
+Filtered Matches after Lowe's Ratio between image 1 & 2
 
-<table align="center">
-  <tr>
-    <td align="center">
-      <img src="assets/images/bfmatcher/experiment 1/output.png" alt="Top Left" width="400">
-    </td>
-  </tr>
-  <tr>
-    <td colspan="2" align="center">
-      <em>setting  norm to L1</em>
-    </td>
-  </tr>
-  <tr>
-    <td align="center">
-      <img src="assets/images/bfmatcher/experiment 2/output.png" alt="Bottom Left" width="400">
-    </td>
-  </tr>
-  <tr>
-    <td colspan="2" align="center">
-      <em>setting norm to L2</em>
-    </td>
-  </tr>
-</table>
+*Feature matching for Custom Dataset*
+![](assets/images/bfmatcher/experiment 1/output.png)
+setting norm to L1
+
+![](assets/images/bfmatcher/experiment 2/output.png)
+setting norm to L2
 
 ## Why L2 Norm (Euclidean Distance) is Better for Matching SIFT Descriptors
 
