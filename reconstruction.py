@@ -330,40 +330,122 @@ class ReconstructionPipeline:
 
         return pts3d, pts3d_for_pnp, pts2d_for_pnp, triangulation_status
 
-    def do_pnp(self, pts3d_for_pnp, pts2d_for_pnp, K, iterations=200, reprojThresh=5):
-        """
-        Performs Pnp with Ransac implemented manually. The camera pose which has the most inliers (points which
-        when reprojected are sufficiently close to their keypoint coordinate) is deemed best and is returned.
+    # def do_pnp(self, pts3d_for_pnp, pts2d_for_pnp, K, iterations=200, reprojThresh=5):
+    #     """
+    #     Performs Pnp with Ransac implemented manually. The camera pose which has the most inliers (points which
+    #     when reprojected are sufficiently close to their keypoint coordinate) is deemed best and is returned.
 
-        :param pts3d_for_pnp: list of index aligned 3D coordinates
-        :param pts2d_for_pnp: list of index aligned 2D coordinates
-        :param K: Intrinsics matrix
-        :param iterations: Number of Ransac iterations
-        :param reprojThresh: Max reprojection error for point to be considered an inlier
-        """
-        list_pts3d_for_pnp = pts3d_for_pnp
-        list_pts2d_for_pnp = pts2d_for_pnp
-        pts3d_for_pnp = np.squeeze(np.array(pts3d_for_pnp))
-        pts2d_for_pnp = np.expand_dims(np.squeeze(np.array(pts2d_for_pnp)), axis=1)
-        num_pts = len(pts3d_for_pnp)
+    #     :param pts3d_for_pnp: list of index aligned 3D coordinates
+    #     :param pts2d_for_pnp: list of index aligned 2D coordinates
+    #     :param K: Intrinsics matrix
+    #     :param iterations: Number of Ransac iterations
+    #     :param reprojThresh: Max reprojection error for point to be considered an inlier
+    #     """
+    #     list_pts3d_for_pnp = pts3d_for_pnp
+    #     list_pts2d_for_pnp = pts2d_for_pnp
+    #     pts3d_for_pnp = np.squeeze(np.array(pts3d_for_pnp))
+    #     pts2d_for_pnp = np.expand_dims(np.squeeze(np.array(pts2d_for_pnp)), axis=1)
+    #     num_pts = len(pts3d_for_pnp)
 
-        highest_inliers = 0
-        for i in range(iterations):
-            pt_idxs = np.random.choice(num_pts, 6, replace=False)
-            pts3 = np.array([pts3d_for_pnp[pt_idxs[i]] for i in range(len(pt_idxs))])
-            pts2 = np.array([pts2d_for_pnp[pt_idxs[i]] for i in range(len(pt_idxs))])
-            _, rvec, tvec = cv2.solvePnP(pts3, pts2, K, distCoeffs=np.array([]), flags=cv2.SOLVEPNP_ITERATIVE)
+    #     highest_inliers = 0
+    #     for i in range(iterations):
+    #         pt_idxs = np.random.choice(num_pts, 6, replace=False)
+    #         pts3 = np.array([pts3d_for_pnp[pt_idxs[i]] for i in range(len(pt_idxs))])
+    #         pts2 = np.array([pts2d_for_pnp[pt_idxs[i]] for i in range(len(pt_idxs))])
+    #         _, rvec, tvec = cv2.solvePnP(pts3, pts2, K, distCoeffs=np.array([]), flags=cv2.SOLVEPNP_ITERATIVE)
+    #         R, _ = cv2.Rodrigues(rvec)
+    #         pnp_errors, projpts, avg_err, perc_inliers = self.test_reproj_pnp_points(list_pts3d_for_pnp, list_pts2d_for_pnp, R, tvec, K, rep_thresh=reprojThresh)
+    #         if highest_inliers < perc_inliers:
+    #             highest_inliers = perc_inliers
+    #             best_R = R
+    #             best_tvec = tvec
+    #     R = best_R
+    #     tvec = best_tvec
+    #     print('rvec:', rvec,'\n\ntvec:', tvec)
+
+    #     return R, tvec
+    
+    def do_pnp(self, pts3d_for_pnp: List[np.ndarray], pts2d_for_pnp: List[Tuple[float, float]], K: np.matrix, iterations: int = 200, reprojThresh: float = 5.0):
+        """
+        Performs PnP using cv2.solvePnPRansac to estimate the pose of a new camera.
+
+        Args:
+            pts3d_for_pnp: List of 3D point coordinates (each element typically np.ndarray shape (3,) or (1,3)).
+            pts2d_for_pnp: List of corresponding 2D image point coordinates (each element tuple (x,y)).
+            K: Camera intrinsic matrix.
+            iterations: Number of RANSAC iterations for solvePnPRansac.
+            reprojThresh: RANSAC inlier threshold (pixel distance). solvePnPRansac uses squared error.
+
+        Returns:
+            Tuple[Optional[np.ndarray], Optional[np.ndarray]]: Estimated rotation matrix (3x3) and translation vector (3x1),
+                                                              or (None, None) if PnP fails.
+        """
+        if not pts3d_for_pnp or not pts2d_for_pnp:
+            print("Error: Empty 3D or 2D points passed to do_pnp.")
+            return None, None
+
+        if len(pts3d_for_pnp) != len(pts2d_for_pnp):
+            print("Error: Mismatch in the number of 3D and 2D points for PnP.")
+            return None, None
+
+        # OpenCV's PnP functions require at least 4 points for methods like EPNP/SQPNP.
+        # The calling code in main.py already checks for len(pts3d_for_pnp) < 12, which is sufficient.
+        min_pnp_points = 4 
+        if len(pts3d_for_pnp) < min_pnp_points:
+            print(f"Warning: Only {len(pts3d_for_pnp)} points provided for PnP. Needs at least {min_pnp_points}. PnP may fail.")
+            # Depending on the flag, PnP might still attempt but likely fail or be unstable.
+            # For robustness, one might return None, None here.
+            # However, solvePnPRansac itself will also fail if insufficient points for the chosen method.
+
+        # Convert points to the format required by cv2.solvePnPRansac
+        # objectPoints: Array of object points in the object coordinate space, (N, 3) float
+        # imagePoints: Array of corresponding image points, (N, 2) float
+        try:
+            # Each p in pts3d_for_pnp is a NumPy array, e.g., shape (1,3) or (3,)
+            # We need to stack them into an (N, 3) array.
+            object_points = np.array([p.reshape(3) for p in pts3d_for_pnp], dtype=np.float32)
+            
+            # Each p in pts2d_for_pnp is a tuple (x,y) or a (2,) array
+            image_points = np.array(pts2d_for_pnp, dtype=np.float32).reshape(-1, 2)
+        except Exception as e:
+            print(f"Error formatting points for PnP: {e}")
+            return None, None
+
+        if object_points.shape[0] < min_pnp_points: # Redundant if main check is robust, but good safety.
+             print(f"Error: Not enough points ({object_points.shape[0]}) for PnP after formatting.")
+             return None, None
+
+
+        # Use cv2.solvePnPRansac
+        # reprojectionError is the squared maximum allowed reprojection error.
+        # flags: cv2.SOLVEPNP_SQPNP is robust and efficient (requires OpenCV >= 4.5.1)
+        #        cv2.SOLVEPNP_EPNP is a common alternative.
+        #        cv2.SOLVEPNP_ITERATIVE is also an option if you want to match the previous inner call.
+        # iterationsCount maps to the 'iterations' argument.
+        # confidence: Probability that the RANSAC procedure will produce a useful result.
+        success, rvec, tvec, inliers = cv2.solvePnPRansac(
+            object_points,
+            image_points,
+            K,
+            distCoeffs=np.array([]),  # Assuming no distortion
+            iterationsCount=iterations,
+            reprojectionError=float(reprojThresh**2), # Must be float, use squared threshold
+            confidence=0.99,          # Default is 0.99
+            flags=cv2.SOLVEPNP_SQPNP  # Or cv2.SOLVEPNP_EPNP
+        )
+
+        if success and rvec is not None and tvec is not None:
             R, _ = cv2.Rodrigues(rvec)
-            pnp_errors, projpts, avg_err, perc_inliers = self.test_reproj_pnp_points(list_pts3d_for_pnp, list_pts2d_for_pnp, R, tvec, K, rep_thresh=reprojThresh)
-            if highest_inliers < perc_inliers:
-                highest_inliers = perc_inliers
-                best_R = R
-                best_tvec = tvec
-        R = best_R
-        tvec = best_tvec
-        print('rvec:', rvec,'\n\ntvec:', tvec)
+            print(f"solvePnPRansac successful. Inliers: {len(inliers) if inliers is not None else 'N/A'}/{len(object_points)}")
+            print('rvec:\n', rvec, '\n\ntvec:\n', tvec)
+            return R, tvec
+        else:
+            print("solvePnPRansac failed.")
+            if not success: print("  - Success flag was False.")
+            if rvec is None: print("  - rvec was None.")
+            if tvec is None: print("  - tvec was None.")
+            return None, None
 
-        return R, tvec
 
     def prep_for_reproj(self, img_idx, points3d_with_views, keypoints):
         """

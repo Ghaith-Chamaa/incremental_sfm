@@ -121,12 +121,37 @@ while len(unresected_imgs) > 0:
     R_res = R_mats[resected_idx]
     t_res = t_vecs[resected_idx]
     print(f"Unresected image: {unresected_idx}, resected: {resected_idx}")
-    R_new, t_new = rec_pipeline.do_pnp(pts3d_for_pnp, pts2d_for_pnp, K)
+    # R_new, t_new = rec_pipeline.do_pnp(pts3d_for_pnp, pts2d_for_pnp, K)
+    # R_mats[unresected_idx] = R_new
+    # t_vecs[unresected_idx] = t_new
+    # if prepend == True: resected_imgs.insert(0, unresected_idx)
+    # else: resected_imgs.append(unresected_idx)
+    # unresected_imgs.remove(unresected_idx)
+    # pnp_errors, projpts, avg_err, perc_inliers = rec_pipeline.test_reproj_pnp_points(pts3d_for_pnp, pts2d_for_pnp, R_new, t_new, K)
+    # print(f"Average error of reprojecting points used to resect image {unresected_idx} back onto it is: {avg_err}")
+    # print(f"Fraction of Pnp inliers: {perc_inliers} num pts used in Pnp: {len(pnp_errors)}")
+    
+    
+    R_new, t_new = rec_pipeline.do_pnp(pts3d_for_pnp, pts2d_for_pnp, K, iterations=200, reprojThresh=5.0) # Pass arguments explicitly if defaults changed
+    if R_new is None or t_new is None: # Check if PnP failed
+        print(f"PnP failed for unresected image {unresected_idx} using resected image {resected_idx}. Skipping this attempt.")
+        # By 'continue', unresected_idx remains in unresected_imgs because 
+        # 'unresected_imgs.remove(unresected_idx)' later in the loop will be skipped.
+        # This means the system might try to resect this image later with a different resected_idx.
+        continue 
+    
+    # --- If PnP was successful, proceed ---
     R_mats[unresected_idx] = R_new
     t_vecs[unresected_idx] = t_new
-    if prepend == True: resected_imgs.insert(0, unresected_idx)
-    else: resected_imgs.append(unresected_idx)
-    unresected_imgs.remove(unresected_idx)
+    
+    if prepend: # Corrected: was if prepend == True:
+        resected_imgs.insert(0, unresected_idx)
+    else:
+        resected_imgs.append(unresected_idx)
+    
+    # This line should only be executed if PnP was successful and the image is now considered resected.
+    unresected_imgs.remove(unresected_idx) 
+    
     pnp_errors, projpts, avg_err, perc_inliers = rec_pipeline.test_reproj_pnp_points(pts3d_for_pnp, pts2d_for_pnp, R_new, t_new, K)
     print(f"Average error of reprojecting points used to resect image {unresected_idx} back onto it is: {avg_err}")
     print(f"Fraction of Pnp inliers: {perc_inliers} num pts used in Pnp: {len(pnp_errors)}")
@@ -134,7 +159,7 @@ while len(unresected_imgs) > 0:
     if resected_idx < unresected_idx:
         kpts1, kpts2, kpts1_idxs, kpts2_idxs = rec_pipeline.get_aligned_kpts(resected_idx, unresected_idx, keypoints, matches, mask=triangulation_status)
         if np.sum(triangulation_status) > 0: #at least 1 point needs to be triangulated
-            points3d_with_views, tri_errors, avg_tri_err_l, avg_tri_err_r = rec_pipeline.triangulate_points_and_reproject(R_res, t_res, R_new, t_new, K, points3d_with_views, resected_idx, unresected_idx, kpts1, kpts2, kpts1_idxs, kpts2_idxs, compute_reproj=True)
+            points3d_with_views, tri_errors, atriangulate_points_and_reprojectvg_tri_err_l, avg_tri_err_r = rec_pipeline.triangulate_points_and_reproject(R_res, t_res, R_new, t_new, K, points3d_with_views, resected_idx, unresected_idx, kpts1, kpts2, kpts1_idxs, kpts2_idxs, compute_reproj=True)
     else:
         kpts1, kpts2, kpts1_idxs, kpts2_idxs = rec_pipeline.get_aligned_kpts(unresected_idx, resected_idx, keypoints, matches, mask=triangulation_status)
         if np.sum(triangulation_status) > 0: #at least 1 point needs to be triangulated
