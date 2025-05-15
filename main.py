@@ -12,8 +12,9 @@ from reconstruction import *
 from utils import *
 
 base_path = os.getcwd()
-USE_PYTORCH_OPTIMIZER = False
+USE_PYTORCH_OPTIMIZER = True
 SHOW_PLOTS_INTERACTIVELY = False
+SAVE_PLOTS = False
 
 n_imgs = 46  # 46 if imgset = 'templering', 49 if imgset = 'Viking'
 imgset = "templeRing"
@@ -54,49 +55,51 @@ print(f"\n======== Using total {len(images)} images of dataset {imgset} ========
 
 feam_pipeline = SIFTMatcher()
 keypoints, descriptors = feam_pipeline.extract_features(images)
-print(f"\n======== Plotting and Saving Features (first few images as example) ========")
-for i in range(n_imgs):
-    img_for_plot = images_color_for_plotting[i] if images_color_for_plotting else images[i]
-    save_plotted_keypoints(
-        img_for_plot,
-        keypoints[i],
-        features_out_dir,
-        f"features_img_{i:03d}.png",
-        title=f"Detected {len(keypoints[i])} SIFT Features in Image {i}",
-        show_plot=SHOW_PLOTS_INTERACTIVELY
-    )
+
+if SAVE_PLOTS:
+    print(f"\n======== Plotting and Saving Features (first few images as example) ========")
+    for i in range(n_imgs):
+        img_for_plot = images_color_for_plotting[i] if images_color_for_plotting else images[i]
+        save_plotted_keypoints(
+            img_for_plot,
+            keypoints[i],
+            features_out_dir,
+            f"features_img_{i:03d}.png",
+            title=f"Detected {len(keypoints[i])} SIFT Features in Image {i}",
+            show_plot=SHOW_PLOTS_INTERACTIVELY
+        )
     
 raw = feam_pipeline.match_all_pairs(descriptors)
 matches = feam_pipeline.filter_outliers(raw, keypoints)
 print("Matches:", feam_pipeline.count_total_matches(matches))
 img_adjacency, list_of_img_pairs  = feam_pipeline.connectivity(matches)
 
+if SAVE_PLOTS:
+    print(f"\n======== Plotting and Saving Filtered Matches (example pairs) ========")
+    # Plot for a few example pairs that have matches
+    num_matches_to_plot = 0
+    max_match_plots =  n_imgs # Limit the number of match plots
 
-print(f"\n======== Plotting and Saving Filtered Matches (example pairs) ========")
-# Plot for a few example pairs that have matches
-num_matches_to_plot = 0
-max_match_plots =  n_imgs # Limit the number of match plots
-
-for i in range(n_imgs):
-    for j in range(i + 1, n_imgs):
-        if matches[i][j] and len(matches[i][j]) > 0:
-            img1_for_plot = images_color_for_plotting[i] if images_color_for_plotting else images[i]
-            img2_for_plot = images_color_for_plotting[j] if images_color_for_plotting else images[j]
-            
-            save_plotted_matches(
-                img1_for_plot, keypoints[i],
-                img2_for_plot, keypoints[j],
-                matches[i][j], # Draw the good (filtered) matches
-                matches_out_dir,
-                f"matches_{i:03d}_vs_{j:03d}.png",
-                title=f"Filtered Matches {len(matches[i][j])} between Image {i} and Image {j}",
-                show_plot=SHOW_PLOTS_INTERACTIVELY
-            )
-            num_matches_to_plot += 1
+    for i in range(n_imgs):
+        for j in range(i + 1, n_imgs):
+            if matches[i][j] and len(matches[i][j]) > 0:
+                img1_for_plot = images_color_for_plotting[i] if images_color_for_plotting else images[i]
+                img2_for_plot = images_color_for_plotting[j] if images_color_for_plotting else images[j]
+                
+                save_plotted_matches(
+                    img1_for_plot, keypoints[i],
+                    img2_for_plot, keypoints[j],
+                    matches[i][j], # Draw the good (filtered) matches
+                    matches_out_dir,
+                    f"matches_{i:03d}_vs_{j:03d}.png",
+                    title=f"Filtered Matches {len(matches[i][j])} between Image {i} and Image {j}",
+                    show_plot=SHOW_PLOTS_INTERACTIVELY
+                )
+                num_matches_to_plot += 1
 
 ### This cell initializes the reconstruction
 rec_pipeline = ReconstructionPipeline(img_adjacency, matches, keypoints, K)
-best_pair = rec_pipeline.best_img_pair(top_x_perc=0.2)
+best_pair = sorted(rec_pipeline.best_img_pair(top_x_perc=0.2))
 R0, t0, R1, t1, points3d_with_views = rec_pipeline.initialize_reconstruction(best_pair[0], best_pair[1])
 
 R_mats = {best_pair[0]: R0, best_pair[1]: R1}
@@ -106,39 +109,66 @@ resected_imgs = [best_pair[0], best_pair[1]]
 unresected_imgs = [i for i in range(len(images)) if i not in resected_imgs] 
 print('initial image pair:', resected_imgs)
 avg_err = 0
-
+avg_tri_err_l = 0
+avg_tri_err_r = 0
 
 ### This cell grows and refines the reconstruction 
-BA_chkpts = [3,4,5,6] + [int(6*(1.34**i)) for i in range(25)]
+BA_chkpts = [3,4,5,6] + [int(6*(1.34**i)) for i in range(int(n_imgs/2))]
+iter = 0
 while len(unresected_imgs) > 0:
-    resected_idx, unresected_idx, prepend = rec_pipeline.next_img_pair_to_grow_reconstruction(n_imgs, best_pair, resected_imgs, unresected_imgs, img_adjacency)
+    
+    # NEW CALL (example):
+    resected_idx, unresected_idx, prepend = rec_pipeline.next_img_pair_to_grow_reconstruction_scored(
+        n_imgs, resected_imgs, unresected_imgs, 
+        rec_pipeline.img_adjacency, # Pass from pipeline object
+        rec_pipeline.matches,       # Pass from pipeline object
+        rec_pipeline.keypoints,     # Pass from pipeline object
+        points3d_with_views         # Pass current 3D points
+    )
+
+    # Add a check here for the case where next_img_pair_to_grow_reconstruction_scored returns None, None
+    if unresected_idx is None or resected_idx is None:
+        print("No more suitable image pairs could be found by the selection strategy. Ending reconstruction.")
+        break # Exit the while loop
+    
+    # resected_idx, unresected_idx, prepend = rec_pipeline.next_img_pair_to_grow_reconstruction(n_imgs, best_pair, resected_imgs, unresected_imgs, img_adjacency)
+    # if (resected_idx, unresected_idx) not in list_of_img_pairs:
+    #     print(f"Skipping pair {resected_idx} vs {unresected_idx}")
+    #     unresected_imgs.remove(unresected_idx)
+    #     continue
     points3d_with_views, pts3d_for_pnp, pts2d_for_pnp, triangulation_status = rec_pipeline.get_correspondences_for_pnp(resected_idx, unresected_idx, points3d_with_views, matches, keypoints)
-    if len(pts3d_for_pnp) < 12:
-        print(f"{len(pts3d_for_pnp)} is too few correspondences for pnp. Skipping imgs resected:{resected_idx} and unresected:{unresected_idx}")
-        print(f"Currently resected imgs: {resected_imgs}, unresected: {unresected_imgs}")
-        continue
+    MIN_PNP_POINTS_THRESHOLD = 6 # Or your preferred minimum
+    if len(pts3d_for_pnp) < MIN_PNP_POINTS_THRESHOLD or len(pts2d_for_pnp) < MIN_PNP_POINTS_THRESHOLD:
+        print(f"Found only {len(pts3d_for_pnp)} 3D points and {len(pts2d_for_pnp)} 2D points. "
+              f"Too few correspondences for PnP between unresected image {unresected_idx} "
+              f"and resected image {resected_idx}. Skipping this attempt.")
+        
+        if unresected_idx in unresected_imgs:
+            unresected_imgs.remove(unresected_idx)
+            print(f"Image {unresected_idx} has been removed from the queue of unresected images due to insufficient points for PnP.")
+        
+        continue # Skip to the next iteration
 
     R_res = R_mats[resected_idx]
     t_res = t_vecs[resected_idx]
     print(f"Unresected image: {unresected_idx}, resected: {resected_idx}")
-    # R_new, t_new = rec_pipeline.do_pnp(pts3d_for_pnp, pts2d_for_pnp, K)
-    # R_mats[unresected_idx] = R_new
-    # t_vecs[unresected_idx] = t_new
-    # if prepend == True: resected_imgs.insert(0, unresected_idx)
-    # else: resected_imgs.append(unresected_idx)
-    # unresected_imgs.remove(unresected_idx)
-    # pnp_errors, projpts, avg_err, perc_inliers = rec_pipeline.test_reproj_pnp_points(pts3d_for_pnp, pts2d_for_pnp, R_new, t_new, K)
-    # print(f"Average error of reprojecting points used to resect image {unresected_idx} back onto it is: {avg_err}")
-    # print(f"Fraction of Pnp inliers: {perc_inliers} num pts used in Pnp: {len(pnp_errors)}")
     
+    print(f"Unresected image: {unresected_idx}, resected: {resected_idx}")
     
     R_new, t_new = rec_pipeline.do_pnp(pts3d_for_pnp, pts2d_for_pnp, K, iterations=200, reprojThresh=5.0) # Pass arguments explicitly if defaults changed
+    
     if R_new is None or t_new is None: # Check if PnP failed
         print(f"PnP failed for unresected image {unresected_idx} using resected image {resected_idx}. Skipping this attempt.")
-        # By 'continue', unresected_idx remains in unresected_imgs because 
-        # 'unresected_imgs.remove(unresected_idx)' later in the loop will be skipped.
-        # This means the system might try to resect this image later with a different resected_idx.
-        continue 
+        
+        # FIX: Remove the image from the unresected list to prevent an infinite loop
+        # on this specific image if it consistently fails PnP.
+        if unresected_idx in unresected_imgs:
+            unresected_imgs.remove(unresected_idx)
+            print(f"Image {unresected_idx} has been removed from the queue of unresected images due to PnP failure.")
+        # else: # Should ideally not happen if unresected_idx was chosen from unresected_imgs
+            # print(f"Warning: Image {unresected_idx} was not in unresected_imgs when PnP failed.")
+            
+        continue # Continue to the next iteration of the while loop
     
     # --- If PnP was successful, proceed ---
     R_mats[unresected_idx] = R_new
@@ -199,7 +229,7 @@ while len(unresected_imgs) > 0:
         av += avg_error
     av = av/len(resected_imgs)
     print(f'Average reprojection error across all {len(resected_imgs)} resected images is {av} pixels')
-    
+    iter+=1
     
     
 ### This cell visualizes the pointcloud
@@ -226,7 +256,7 @@ colmap_output_dir = os.path.join(base_path, "colmap_export", imgset) # example p
 # Get image paths again or pass from where `get_images` was called
 images_paths_for_export = sorted(
     glob.glob(
-        os.path.join(base_path, "datasets", imgset) + "/*." + "png", # Assuming "png" or your img_format
+        os.path.join(base_path, "datasets", imgset) + "/*." + type_, # Assuming "png" or your img_format
         recursive=True,
     )
 )
@@ -236,7 +266,7 @@ images_color_data = get_images(base_path, imgset, type_, n_imgs)
 # Choose your color strategy: "first", "average", or "median"
 chosen_color_strategy = "average" # Or "first" or "median"
 
-export_to_colmap(
+point_rgb_colors = export_to_colmap(
     output_path=colmap_output_dir,
     K_matrix=K,
     image_paths=images_paths_for_export,
@@ -251,3 +281,17 @@ export_to_colmap(
 )
 
 visualize_sfm_open3d(vpoints)
+
+if vpoints is not None and vpoints.shape[0] > 0:
+    visualize_sfm_and_pose_open3d(
+        points_3D=vpoints,
+        camera_R_mats=R_mats,
+        camera_t_vecs=t_vecs,
+        K_matrix=K,
+        image_width=img_w,    
+        image_height=img_h,
+        frustum_scale=0.5,
+        point_colors=point_rgb_colors
+    )
+else:
+    print("No points to visualize.")
