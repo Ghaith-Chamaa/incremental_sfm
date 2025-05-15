@@ -19,19 +19,29 @@ n_imgs = 46  # 46 if imgset = 'templering', 49 if imgset = 'Viking'
 imgset = "templeRing"
 K = np.matrix("1520.40 0.00 302.32; 0.00 1525.90 246.87; 0.00 0.00 1.00")
 type_ = "png"
+
 # imgset = "dino"
 # n_imgs = 46
 # K = np.matrix(
 #     "3310.400000 0.000000 316.730000; 0.000000 3325.500000 200.550000; 0.000000 0.000000 1.000000"
 # )
+# type_ = "png"
+
 
 # n_imgs = 18
 # imgset = "daal_tin"
 # K = np.matrix("3368.26 0 1488.67; 0 3369.74 2023.21; 0 0 1")
 # type_ = "jpg"
 
+
+# n_imgs = 51  # Custom Dataset Blue Color Robot. 51 images taken from my mobile phone. first I did the camera calibration to find the K matrix
+# imgset = "blue_boot_a53_4624x3468"
+# K = np.matrix("2.25370759e+03 0.00000000e+00 1.92969309e+03; 0.00000000e+00 2.24471892e+03 1.05763445e+03; 0.00 0.00 1.00")
+# type_ = "jpg"
+
 images = get_images(base_path, imgset, type_, n_imgs, "gray")
 assert len(images) == n_imgs
+print(f"\n======== Using total {images} images of dataset {imgset} ========\n\n\n")
 
 feam_pipeline = SIFTMatcher()
 keypoints, descriptors = feam_pipeline.extract_features(images)
