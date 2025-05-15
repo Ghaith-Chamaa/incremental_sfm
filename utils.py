@@ -294,6 +294,97 @@ def get_images(base_path, dataset_path, type_="color"):
     return images
 
 
+def extract_name_K_R_T(image_parameters=""):
+    if image_parameters == "":
+        print("Image parameters file not found.")
+        return None
+    cameraMatrix = np.array(
+        [
+            [
+                float(image_parameters[1]),
+                float(image_parameters[2]),
+                float(image_parameters[3]),
+            ],
+            [
+                float(image_parameters[4]),
+                float(image_parameters[5]),
+                float(image_parameters[6]),
+            ],
+            [
+                float(image_parameters[7]),
+                float(image_parameters[8]),
+                float(image_parameters[9]),
+            ],
+        ]
+    )
+
+    rotationMatrix = np.array(
+        [
+            [
+                float(image_parameters[10]),
+                float(image_parameters[11]),
+                float(image_parameters[12]),
+            ],
+            [
+                float(image_parameters[13]),
+                float(image_parameters[14]),
+                float(image_parameters[15]),
+            ],
+            [
+                float(image_parameters[16]),
+                float(image_parameters[17]),
+                float(image_parameters[18]),
+            ],
+        ]
+    )
+
+    transMatrix = np.array(
+        [
+            [float(image_parameters[19])],
+            [float(image_parameters[20])],
+            [float(image_parameters[21])],
+        ]
+    )
+    return [image_parameters[0], cameraMatrix, rotationMatrix, transMatrix]
+
+
+def get_img_params(base_path: str, dataset_path: str, img_params: list = []) -> list:
+    """
+    Reads the intrinsic and extrinsic camera parameters from a file.
+
+    This function reads the intrinsic and extrinsic camera parameters from a file
+    and returns them as NumPy arrays. The file should contain the camera matrix,
+    distortion coefficients, rotation and translation vectors for each image.
+
+    Parameters:
+    - base_path (str): The base path of the dataset.
+    - dataset_path (str): The path of the dataset within the base path.
+    - img_params (list, optional): A list to store the image parameters. Defaults to an empty list.
+
+    Returns:
+    - list: A list containing the image parameters read from the file. Each element in the list is a list of strings,
+            representing the parameters for a single image.
+
+    The file format should be as follows:
+    - Each line in the file represents the parameters for a single image.
+    - The first element in each line is the image name.
+    - The remaining elements in each line are the camera matrix, distortion coefficients, rotation and translation vectors.
+    """
+    try:
+        with open(
+            os.path.join(base_path, dataset_path, "" + dataset_path + "_par.txt"), "r"
+        ) as file:
+            for line in file:
+                if line.startswith(dataset_path):
+                    img_params.append(
+                        extract_name_K_R_T(line.split())
+                    )  # imgname.png k11 k12 k13 k21 k22 k23 k31 k32 k33 r11 r12 r13 r21 r22 r23 r31 r32 r33 t1 t2 t3
+            return img_params
+    except FileNotFoundError:
+        print(f"File '{dataset_path}_par.txt' not found.")
+        return []
+
+
 def get_sift_features(image: np.ndarray) -> Tuple[List[cv2.KeyPoint], np.ndarray]:
     """
     Detects keypoints and computes descriptors using SIFT (Scale-Invariant Feature Transform).
