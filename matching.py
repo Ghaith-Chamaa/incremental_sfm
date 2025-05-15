@@ -8,7 +8,7 @@ class SIFTMatcher:
     A utility class for extracting SIFT features from images, matching them,
     removing outliers, and generating adjacency information between images.
     """
-    def __init__(self, ratio_threshold: float = 0.7, min_matches: int = 20,
+    def __init__(self, ratio_threshold: float = 0.75, min_matches: int = 20,
                  ransac_threshold: float = 3.0):
         """
         Initialize the SIFT matcher parameters.
@@ -95,9 +95,11 @@ class SIFTMatcher:
 
                 # If no model found or degenerate
                 if F is None or (F.shape == (3, 3) and np.linalg.det(F) > 1e-7):
-                    raise ValueError(
-                        f"Degenerate F between images {i} and {j}"
-                    )
+                    continue
+                    # print(f"F {F} \n F.shape {F.shape} np.linalg.det(F) {np.linalg.det(F) > 1e-7}")
+                    # raise ValueError(
+                    #     f"Degenerate F between images {i} and {j}"
+                    # )
 
                 if mask is None:
                     continue

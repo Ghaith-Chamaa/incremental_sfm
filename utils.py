@@ -20,16 +20,22 @@ def visualize_point_cloud(points_3D):
 
     # Set the points
     pcd.points = o3d.utility.Vector3dVector(
-        points_3D.T
+        points_3D
     )  # Transpose to match Open3D format
 
     # Optionally, set colors (here we set all points to red)
+    bbox = pcd.get_axis_aligned_bounding_box()
+    diag_len = np.linalg.norm(bbox.get_max_bound() - bbox.get_min_bound())
+    voxel_size = diag_len / 200  # divide bounding box diagonal by voxel count
     colors = np.array([[1, 0, 0] for _ in range(points_3D.shape[1])])  # Red color
     pcd.colors = o3d.utility.Vector3dVector(colors)
+    
+    # Create voxel grid
+    voxel_grid = o3d.geometry.VoxelGrid.create_from_point_cloud(pcd, voxel_size=voxel_size)
 
     # Visualize the point cloud
     o3d.visualization.draw_geometries(
-        [pcd], window_name="3D Point Cloud", width=800, height=600
+        [pcd, voxel_grid], window_name="3D Point Cloud", point_show_normal=False, width=800, height=600
     )
 
 
@@ -663,3 +669,71 @@ def visualize_sfm_open3d(points_3d):
     pcd = o3d.geometry.PointCloud()
     pcd.points = o3d.utility.Vector3dVector(points_3d)
     o3d.visualization.draw_geometries([pcd], window_name="SfM 3D Reconstruction")
+
+
+def save_plotted_keypoints(image: np.ndarray, keypoints: List[cv2.KeyPoint],
+                           output_folder: str, filename: str,
+                           title: str = "Detected Keypoints",
+                           show_plot: bool = False):
+    """
+    Draws keypoints on an image and saves it to a file. Optionally displays it.
+    """
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
+
+    image_with_kp = cv2.drawKeypoints(
+        image, keypoints, None, flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS
+    )
+    
+    plt.figure(figsize=(10, 8)) # Adjusted figure size for saving
+    plt.imshow(cv2.cvtColor(image_with_kp, cv2.COLOR_BGR2RGB) if len(image_with_kp.shape) == 3 else image_with_kp, cmap='gray' if len(image.shape) == 2 else None)
+    plt.title(title)
+    plt.axis("off")
+    
+    filepath = os.path.join(output_folder, filename)
+    plt.savefig(filepath)
+    print(f"Saved keypoints plot to {filepath}")
+    
+    if show_plot:
+        plt.show()
+    plt.close()
+
+
+def save_plotted_matches(img1: np.ndarray, kp1: List[cv2.KeyPoint],
+                         img2: np.ndarray, kp2: List[cv2.KeyPoint],
+                         matches_to_draw: List[cv2.DMatch], # Draw good matches or raw matches
+                         output_folder: str, filename: str,
+                         title: str = "Feature Matches",
+                         show_plot: bool = False):
+    """
+    Draws matches between two images and saves the plot to a file. Optionally displays it.
+    """
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
+
+    # Ensure images are in BGR format if they are color, for cv2.drawMatches
+    # If they are grayscale, cv2.drawMatches handles it.
+    img1_display = img1
+    img2_display = img2
+    if len(img1.shape) == 2: # Grayscale
+        img1_display = cv2.cvtColor(img1, cv2.COLOR_GRAY2BGR)
+    if len(img2.shape) == 2: # Grayscale
+        img2_display = cv2.cvtColor(img2, cv2.COLOR_GRAY2BGR)
+
+    img_matches_display = cv2.drawMatches(
+        img1_display, kp1, img2_display, kp2, matches_to_draw, None,
+        flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS
+    )
+    
+    plt.figure(figsize=(16, 8)) # Adjusted figure size for saving
+    plt.imshow(cv2.cvtColor(img_matches_display, cv2.COLOR_BGR2RGB)) # Convert BGR to RGB for Matplotlib
+    plt.title(title)
+    plt.axis("off")
+    
+    filepath = os.path.join(output_folder, filename)
+    plt.savefig(filepath)
+    print(f"Saved matches plot to {filepath}")
+
+    if show_plot:
+        plt.show()
+    plt.close()

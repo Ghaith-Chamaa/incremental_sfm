@@ -12,7 +12,9 @@ from reconstruction import *
 from utils import *
 
 base_path = os.getcwd()
-use_pytorch_optimizer = True
+USE_PYTORCH_OPTIMIZER = False
+SHOW_PLOTS_INTERACTIVELY = False
+
 n_imgs = 46  # 46 if imgset = 'templering', 49 if imgset = 'Viking'
 imgset = "templeRing"
 K = np.matrix("1520.40 0.00 302.32; 0.00 1525.90 246.87; 0.00 0.00 1.00")
@@ -35,17 +37,62 @@ type_ = "png"
 # K = np.matrix("2.25370759e+03 0.00000000e+00 1.92969309e+03; 0.00000000e+00 2.24471892e+03 1.05763445e+03; 0.00 0.00 1.00")
 # type_ = "jpg"
 
+# --- Create Output Directories ---
+output_plots_base_dir = os.path.join(base_path, "output_plots", imgset)
+features_out_dir = os.path.join(output_plots_base_dir, "features")
+matches_out_dir = os.path.join(output_plots_base_dir, "feature_matches")
+
+os.makedirs(features_out_dir, exist_ok=True)
+os.makedirs(matches_out_dir, exist_ok=True)
+print(f"Saving feature plots to: {features_out_dir}")
+print(f"Saving match plots to: {matches_out_dir}")
+
 images = get_images(base_path, imgset, type_, n_imgs, "gray")
+images_color_for_plotting = get_images(base_path, imgset, type_, n_imgs)
 assert len(images) == n_imgs
 print(f"\n======== Using total {len(images)} images of dataset {imgset} ========\n\n\n")
 
 feam_pipeline = SIFTMatcher()
 keypoints, descriptors = feam_pipeline.extract_features(images)
+print(f"\n======== Plotting and Saving Features (first few images as example) ========")
+for i in range(n_imgs):
+    img_for_plot = images_color_for_plotting[i] if images_color_for_plotting else images[i]
+    save_plotted_keypoints(
+        img_for_plot,
+        keypoints[i],
+        features_out_dir,
+        f"features_img_{i:03d}.png",
+        title=f"Detected {len(keypoints[i])} SIFT Features in Image {i}",
+        show_plot=SHOW_PLOTS_INTERACTIVELY
+    )
+    
 raw = feam_pipeline.match_all_pairs(descriptors)
 matches = feam_pipeline.filter_outliers(raw, keypoints)
 print("Matches:", feam_pipeline.count_total_matches(matches))
 img_adjacency, list_of_img_pairs  = feam_pipeline.connectivity(matches)
 
+
+print(f"\n======== Plotting and Saving Filtered Matches (example pairs) ========")
+# Plot for a few example pairs that have matches
+num_matches_to_plot = 0
+max_match_plots =  n_imgs # Limit the number of match plots
+
+for i in range(n_imgs):
+    for j in range(i + 1, n_imgs):
+        if matches[i][j] and len(matches[i][j]) > 0:
+            img1_for_plot = images_color_for_plotting[i] if images_color_for_plotting else images[i]
+            img2_for_plot = images_color_for_plotting[j] if images_color_for_plotting else images[j]
+            
+            save_plotted_matches(
+                img1_for_plot, keypoints[i],
+                img2_for_plot, keypoints[j],
+                matches[i][j], # Draw the good (filtered) matches
+                matches_out_dir,
+                f"matches_{i:03d}_vs_{j:03d}.png",
+                title=f"Filtered Matches {len(matches[i][j])} between Image {i} and Image {j}",
+                show_plot=SHOW_PLOTS_INTERACTIVELY
+            )
+            num_matches_to_plot += 1
 
 ### This cell initializes the reconstruction
 rec_pipeline = ReconstructionPipeline(img_adjacency, matches, keypoints, K)
@@ -95,7 +142,7 @@ while len(unresected_imgs) > 0:
     
     if 0.8 < perc_inliers < 0.95 or 5 < avg_tri_err_l < 10 or 5 < avg_tri_err_r < 10: 
         #If % of inlers from Pnp is too low or triangulation error on either image is too high, bundle adjust
-        if not use_pytorch_optimizer:
+        if not USE_PYTORCH_OPTIMIZER:
             points3d_with_views, R_mats, t_vecs = b.do_BA(points3d_with_views, R_mats, t_vecs, resected_imgs, keypoints, K, ftol=1e0)
         else:
             points3d_with_views, R_mats, t_vecs = b.do_BA_pytorch(
@@ -108,7 +155,7 @@ while len(unresected_imgs) > 0:
             )        
     if len(resected_imgs) in BA_chkpts or len(unresected_imgs) == 0 or perc_inliers <= 0.8 or avg_tri_err_l >= 10 or avg_tri_err_r >= 10:
         #If % of inlers from Pnp is very low or triangulation error on either image is very high, bundle adjust with stricter tolerance
-        if not use_pytorch_optimizer:
+        if not USE_PYTORCH_OPTIMIZER:
             points3d_with_views, R_mats, t_vecs = b.do_BA(points3d_with_views, R_mats, t_vecs, resected_imgs, keypoints, K, ftol=1e-1)
         else:
             points3d_with_views, R_mats, t_vecs = b.do_BA_pytorch(
