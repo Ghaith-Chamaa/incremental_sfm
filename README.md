@@ -158,9 +158,9 @@ SfM estimates the 3D structure of a scene (a set of 3D points) and the motion (p
 Bundle Adjustment (BA) is a non-linear least squares optimization procedure that simultaneously refines all 3D point coordinates $\{X_j\}$ and camera parameters (poses $\{R_i, T_i\}$, and optionally intrinsic parameters $K_i$) by minimizing the sum of squared reprojection errors. It is the gold standard for achieving high accuracy in SfM [Cremers P05, Fusiello P167].
 
 The objective function to minimize is:
-$$
-E(\{R_i, T_i\}_{i=1}^m, \{X_j\}_{j=1}^N) = \sum_{i=1}^m \sum_{j=1}^N \theta_{ij} \left\| \tilde{x}_{ji} - \pi(K, R_i, T_i, X_j) \right\|^2
-$$
+
+E({Rᵢ, Tᵢ} for i = 1 to m, {Xⱼ} for j = 1 to N) =  Σᵢ₌₁^m Σⱼ₌₁^N θᵢⱼ · ‖x̃ⱼᵢ − π(K, Rᵢ, Tᵢ, Xⱼ)‖²
+
 Where:
 -   $(\mathbf{R}_i, \mathbf{T}_i)$: Rotation (3x3 matrix) and translation (3x1 vector) defining the pose of camera $i$.
 -   $\mathbf{K}$: The known intrinsic calibration matrix (assumed fixed for all cameras in this project).
@@ -177,39 +177,36 @@ This is a non-linear least squares (NLS) problem. To solve it using iterative me
 -   **3D Points**: Each 3D point $\mathbf{X}_j$ contributes 3 parameters $(X, Y, Z)$.
 
 **The Jacobian Matrix ($J$):**
-The Jacobian relates changes in parameters to changes in reprojection errors. It has a characteristic sparse block structure. For a single observation of point $j$ in image $i$, the residual is $\mathbf{r}_{ji} = \tilde{\mathbf{x}}_{ji} - \pi(\mathbf{K}, \mathbf{R}_i, \mathbf{T}_i, \mathbf{X}_j)$. The Jacobian contains partial derivatives of these residuals:
+The Jacobian relates changes in parameters to changes in reprojection errors. It has a characteristic sparse block structure. For a single observation of point $j$ in image $i$, the residual is rⱼᵢ = x̃ⱼᵢ − π(K, Rᵢ, Tᵢ, Xⱼ). The Jacobian contains partial derivatives of these residuals:
 
 -   **Derivatives w.r.t. Camera $k$'s Pose Parameters ($\mathbf{g}_k$):**
-    Let $\mathbf{A}_{ijk}$ denote the block $\frac{\partial \mathbf{r}_{ji}}{\partial \mathbf{g}_k^\top}$. This block is non-zero only if $i=k$ (i.e., the parameters of camera $i$ affect only the observations made by camera $i$):
-    $$ A_{ijk} = \frac{\partial \tilde{\eta}(P_i \mathbf{M}^j)}{\partial \mathbf{g}_k^\top} $$
+    Let Aᵢⱼₖ denotes the block ∂rⱼᵢ / ∂gₖᵀ. This block is non-zero only if $i=k$ (i.e., the parameters of camera $i$ affect only the observations made by camera $i$): Aᵢⱼₖ = ∂[η̃(Pᵢ · Mʲ)] / ∂gₖᵀ
     (where $P_i$ is camera $i$'s projection matrix, $M^j$ is 3D point $j$, and $\tilde{\eta}$ encapsulates the projection error).
 
 -   **Derivatives w.r.t. 3D Point $k$'s Coordinates ($\tilde{\mathbf{M}}_k$):**
-    Let $\mathbf{B}_{ijk}$ denote the block $\frac{\partial \mathbf{r}_{ji}}{\partial \tilde{\mathbf{M}}_k^\top}$. This block is non-zero only if $j=k$ (i.e., the coordinates of point $j$ affect only the observations of point $j$):
-    $$ B_{ijk} = \frac{\partial \tilde{\eta}(P_i \mathbf{M}^j)}{\partial \tilde{\mathbf{M}}_k^\top} $$
+    Let $\mathbf{B}_{ijk}$ denote the block Bᵢⱼₖ. This block is non-zero only if $j=k$ (i.e., the coordinates of point $j$ affect only the observations of point $j$): Bᵢⱼₖ = ∂[η̃(Pᵢ · Mʲ)] / ∂M̃ₖᵀ
 
 **Sparsity Exploitation:**
-The conditions $A_{ijk} = 0$ for all $i \ne k$ and $B_{ijk} = 0$ for all $j \ne k$ mean that each row of the Jacobian (corresponding to a single 2D observation's x and y residuals) has non-zero entries only for the parameters of the specific camera that made the observation and the specific 3D point that was observed. This results in a highly sparse "arrowhead" or "bordered block diagonal" structure for the normal equations matrix $J^T J$.
+The conditions Aᵢⱼₖ = 0 for all $i \ne k$ and Bᵢⱼₖ = 0 for all $j \ne k$ mean that each row of the Jacobian (corresponding to a single 2D observation's x and y residuals) has non-zero entries only for the parameters of the specific camera that made the observation and the specific 3D point that was observed. This results in a highly sparse "arrowhead" or "bordered block diagonal" structure for the normal equations matrix $J^T J$.
 
 The Jacobian matrix structure :
-$$
-J = \begin{pmatrix}
-\mathbf{A}_{111} &  &  & \big| & \mathbf{B}_{111} &  &  &  \\
-\mathbf{A}_{121} &  &  & \big| &  & \mathbf{B}_{122} &  &  \\
-\vdots  &  &  & \big| &  &  & \ddots & \vdots \\
-\mathbf{A}_{1n_11}&  &  & \big| &  &  &  & \mathbf{B}_{1n_1N} \\
- & \mathbf{A}_{212} &  & \big| & \mathbf{B}_{211} &  &  &  \\
- & \mathbf{A}_{222} &  & \big| &  & \mathbf{B}_{222} &  &  \\
- & \vdots  &  & \big| &  &  & \ddots & \vdots \\
- & \mathbf{A}_{2n_22}&  & \big| &  &  &  & \mathbf{B}_{2n_2N} \\
-\cdots  & \cdots  & \ddots  & \big| & \cdots & \cdots  & \ddots & \cdots \\
- &  & \mathbf{A}_{m1m} & \big| & \mathbf{B}_{m11} &  &  &  \\
- &  & \mathbf{A}_{m2m} & \big| &  & \mathbf{B}_{m22} &  &  \\
- &  & \vdots  & \big| &  &  & \ddots &  \\
- &  & \mathbf{A}_{mn_m m} & \big| &  &  &  & \mathbf{B}_{mn_mN}
-\end{pmatrix}
-$$
-*This matrix representation is conceptual. Each $\mathbf{A}$ and $\mathbf{B}$ block corresponds to the derivatives of one observation's 2D residual vector with respect to one camera's parameters or one point's parameters.*
+J = [
+<br>  A₁₁₁       | B₁₁₁
+<br>  A₁₂₁       |     B₁₂₂
+<br>  ⋮          |         ⋱
+<br>  A₁ₙ₁₁      |             B₁ₙ₁N
+<br>     A₂₁₂    | B₂₁₁
+<br>     A₂₂₂    |     B₂₂₂
+<br>     ⋮       |         ⋱
+<br>     A₂ₙ₂₂   |             B₂ₙ₂N
+<br>⋯   ⋯   ⋱     | ⋯   ⋯   ⋱   ⋯
+<br>        Aₘ₁ₘ | Bₘ₁₁
+<br>        Aₘ₂ₘ |     Bₘ₂₂
+<br>        ⋮    |         ⋱
+<br>        Aₘₙₘₘ |             BₘₙₘN
+]
+
+*This matrix representation is conceptual. Each A and B block corresponds to the derivatives of one observation's 2D residual vector with respect to one camera's parameters or one point's parameters.*
 
 ### Solving Bundle Adjustment: Optimization Algorithms
 
@@ -218,36 +215,36 @@ Solving the BA NLS problem typically involves iterative methods. This project ex
 **1. Gauss-Newton:**
 The Gauss-Newton algorithm is an iterative method to solve NLS problems. It approximates the non-linear residual function locally with a linear one at each step.
 Given the current estimate of parameters $\mathbf{p}_t$:
-1.  **Linearize Residuals**: $\mathbf{r}(\mathbf{p}_t + \delta \mathbf{p}) \approx \mathbf{r}(\mathbf{p}_t) + J(\mathbf{p}_t) \delta \mathbf{p}$, where $J(\mathbf{p}_t)$ is the Jacobian.
-2.  **Solve Linear System (Normal Equations)**: Find the update step $\delta \mathbf{p}$ that minimizes the linearized sum of squares $\|\mathbf{r}(\mathbf{p}_t) + J(\mathbf{p}_t) \delta \mathbf{p}\|^2$. This leads to solving:
-    $$\delta \mathbf{p} = -\left(J(\mathbf{p}_t)^T J(\mathbf{p}_t)\right)^{-1} J(\mathbf{p}_t)^T r(\mathbf{p}_t)$$
+1.  **Linearize Residuals**: r(p_t + δp) ≈ r(p_t) + J(p_t) · δp, where J(p_t) is the Jacobian.
+2.  **Solve Linear System (Normal Equations)**: Find the update step $\delta \mathbf{p}$ that minimizes the linearized sum of squares ‖r(p_t) + J(p_t) · δp‖². This leads to solving:
+    δp = - (J(p_t)ᵀ J(p_t))⁻¹ J(p_t)ᵀ r(p_t)
     The term $J^T J$ is an approximation of the Hessian matrix and is positive semi-definite.
-3.  **Update Parameters**: $\mathbf{p}_{t+1} = \mathbf{p}_t + \delta \mathbf{p}$.
+3.  **Update Parameters**: p_{t+1} = p_t + δp
 4.  **Iterate** until convergence.
 
 *   **Implementation (`do_BA`)**: The `scipy.optimize.least_squares` function with the `'trf'` (Trust Region Reflective) method is used. TRF is a sophisticated algorithm well-suited for large, sparse NLS problems and shares principles with Gauss-Newton/LM. It implicitly handles the construction and solution of these linear systems, leveraging the provided sparse Jacobian.
 
 **2. First-Order Gradient Descent Methods:**
-These methods use only the first derivative (gradient) of the loss function $L(\mathbf{p}) = \sum \|\mathbf{r}_k(\mathbf{p})\|^2$.
+These methods use only the first derivative (gradient) of the loss function L(p) = Σ ‖r_k(p)‖².
 The basic update rule is:
-$$ \mathbf{p}_{t+1} = \mathbf{p}_t - \alpha \nabla L(\mathbf{p}_t) $$
+p_{t+1} = p_t - α ∇L(p_t)
 where $\alpha$ is the learning rate.
 
 *   **Adam (Adaptive Moment Estimation)**:
     An advanced variant that computes adaptive learning rates for each parameter. It does so by keeping track of an exponentially decaying average of past gradients (first moment) and past squared gradients (second moment).
-    Let $\mathbf{g}_t = \nabla L(\mathbf{p}_t)$ be the gradient at timestep $t$. The update rules for Adam are (simplified, element-wise operations):
+    Let gₜ = ∇L(pₜ) be the gradient at timestep $t$. The update rules for Adam are (simplified, element-wise operations):
 
     1.  **Update biased first moment estimate:**
-        $$ \mathbf{m}_t = \beta_1 \mathbf{m}_{t-1} + (1 - \beta_1) \mathbf{g}_t $$
+        mₜ = β₁ mₜ₋₁ + (1 - β₁) gₜ
     2.  **Update biased second moment estimate:**
-        $$ \mathbf{v}_t = \beta_2 \mathbf{v}_{t-1} + (1 - \beta_2) \mathbf{g}_t^2 $$
-        (where $\mathbf{g}_t^2$ is the element-wise square $\mathbf{g}_t \odot \mathbf{g}_t$)
-    3.  **Compute bias-corrected first moment estimate:**
-        $$ \hat{\mathbf{m}}_t = \frac{\mathbf{m}_t}{1 - \beta_1^t} $$
-    4.  **Compute bias-corrected second moment estimate:**
+        vₜ = β₂ vₜ₋₁ + (1 - β₂) gₜ²
+        (where gₜ² is the element-wise square gₜ ⊙ gₜ)
+    4.  **Compute bias-corrected first moment estimate:**
+        m̂_t = m_t / (1 - β₁ᵗ)
+    5.  **Compute bias-corrected second moment estimate:**
         $$ \hat{\mathbf{v}}_t = \frac{\mathbf{v}_t}{1 - \beta_2^t} $$
-    5.  **Update parameters:**
-        $$ \mathbf{p}_{t+1} = \mathbf{p}_t - \alpha \frac{\hat{\mathbf{m}}_t}{\sqrt{\hat{\mathbf{v}}_t} + \epsilon} $$
+    6.  **Update parameters:**
+        v̂_t = v_t / (1 - β₂ᵗ)
 
     Where:
     -   $\alpha$: The learning rate (step size).
@@ -268,14 +265,11 @@ The SfM pipeline is orchestrated by `main.py`, calling modules for matching, rec
 ### 1. Dataset and Calibration
 -   **Dataset Loading**: Images are loaded in grayscale for feature processing and in color for plotting/colorization using `utils.get_images`. The number of images (`n_imgs`) and dataset name (`imgset`) are configured in `main.py`.
 -   **Camera Calibration Matrix ($K$)**: A single, known 3x3 intrinsic matrix $K$ is used for all images, defined in `main.py`.
-    $$
-    K = \begin{bmatrix}
-    f_x & 0 & c_x \\
-    0 & f_y & c_y \\
-    0 & 0 & 1
-    \end{bmatrix}
-    $$
-
+    K = [
+  <br>[fₓ  0   cₓ]
+  <br>[0   fᵧ  cᵧ]
+  <br>[0   0    1 ]
+]
 ### 2. Feature Matching (`matching.py`)
 The `SIFTMatcher` class handles 2D-2D correspondences:
 1.  **Feature Extraction (`extract_features`)**: `cv2.SIFT_create()` detects keypoints and computes descriptors for all grayscale images.
