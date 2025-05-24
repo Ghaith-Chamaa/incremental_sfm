@@ -582,7 +582,7 @@ class ReconstructionPipeline:
                 # (i.e., self.matches[i][j] where i < j)
                 
                 idx_A, idx_B = min(unres_idx, res_idx), max(unres_idx, res_idx)
-                score = len(self.matches[idx_A][idx_B])
+                score = self.get_pair_score(idx_A, idx_B, matches, keypoints, points3d_with_views, img_adjacency)
                 
                 # Optionally, add a bonus for resected images that are well-established (e.g., see many 3D points)
                 # Or for pairs that offer a good baseline for triangulation.

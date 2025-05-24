@@ -33,20 +33,25 @@ type_ = "png"
 # K = np.matrix("3368.26 0 1488.67; 0 3369.74 2023.21; 0 0 1")
 # type_ = "jpg"
 
-# n_imgs = 32  # Custom Dataset Blue Color Robot. 51 images taken from my mobile phone. first I did the camera calibration to find the K matrix
-# imgset = "mollet_pharm"
+# n_imgs = 23  # Custom Dataset Blue Color Robot. 51 images taken from my mobile phone. first I did the camera calibration to find the K matrix
+# imgset = "smurf_creusot"
 # K = np.matrix("3292.497243914645 0.00 1740.9435935985923; 0.00 3317.367458634331 2296.8076443672303; 0.00 0.00 1.00")
 # type_ = "jpg"
 
-# n_imgs = 23
-# imgset = "corn_fl_box"
-# K = np.matrix("3368.26 0 1488.67; 0 3369.74 2023.21; 0 0 1")
+# n_imgs = 200
+# imgset = "spilled_blood"
+# K = np.matrix("2.39395217e+03 0.00000000e+00 9.32382177e+02; 0.00000000e+00 2.39811854e+03 6.28264995e+02; 0 0 1")
 # type_ = "JPG"
 
-# n_imgs = 37  # Custom Dataset Blue Color Robot. 51 images taken from my mobile phone. first I did the camera calibration to find the K matrix
+# n_imgs = 15  # Custom Dataset Blue Color Robot. 51 images taken from my mobile phone. first I did the camera calibration to find the K matrix
 # imgset = "idk_park"
 # K = np.matrix("3292.497243914645 0.00 1740.9435935985923; 0.00 3317.367458634331 2296.8076443672303; 0.00 0.00 1.00")
 # type_ = "jpg"
+
+# n_imgs = 70
+# imgset = "LUsphinx"
+# K = np.matrix("-2.39395217e+03  1.43529633e-12  9.32382177e+02; 0.00000000e+00 2.39811854e+03  6.28264995e+02; 0 0 1")
+# type_ = "JPG"
 
 # --- Create Output Directories ---
 output_plots_base_dir = os.path.join(base_path, "output_plots", imgset)
@@ -56,6 +61,13 @@ matches_out_dir = os.path.join(output_plots_base_dir, "feature_matches")
 images = get_images(base_path, imgset, type_, n_imgs, "gray")
 images_color_for_plotting = get_images(base_path, imgset, type_, n_imgs)
 print(f"\n======== Using total {len(images)} images of dataset {imgset} ========\n\n\n")
+
+
+if images:
+    img_h, img_w = images[0].shape[:2] # Assuming all images are same size for one camera model
+else:
+    print("No images loaded, cannot determine image dimensions for COLMAP export.")
+
 
 feam_pipeline = SIFTMatcher()
 keypoints, descriptors = feam_pipeline.extract_features(images)
@@ -76,7 +88,7 @@ if SAVE_PLOTS:
             title=f"Detected {len(keypoints[i])} SIFT Features in Image {i}",
             show_plot=SHOW_PLOTS_INTERACTIVELY
         )
-    
+
 raw = feam_pipeline.match_all_pairs(descriptors)
 matches = feam_pipeline.filter_outliers(raw, keypoints)
 print("Matches:", feam_pipeline.count_total_matches(matches))
@@ -217,16 +229,19 @@ while len(unresected_imgs) > 0:
         
 
     av = 0
+    avg_errors = [] 
     for im in resected_imgs:
         p3d, p2d, avg_error, errors = rec_pipeline.get_reproj_errors(im, points3d_with_views, R_mats[im], t_vecs[im], K, keypoints, distCoeffs=np.array([]))
         print(f'Average reprojection error on image {im} is {avg_error} pixels')
         av += avg_error
+        avg_errors.append(avg_error)
     av = av/len(resected_imgs)
     print(f'Average reprojection error across all {len(resected_imgs)} resected images is {av} pixels')
     iter+=1
 
 # --- BUNDLE ADJUSTMENT COMPLETE ---
-
+plt.plot(avg_errors)
+plt.show()
 num_voxels = 100 #Set to 100 for faster visualization, 200 for higher resolution.
 x, y, z = [], [], []
 for pt3 in points3d_with_views:
