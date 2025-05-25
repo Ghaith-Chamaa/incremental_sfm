@@ -12,7 +12,7 @@ from reconstruction import *
 from utils import *
 
 base_path = os.getcwd()
-USE_PYTORCH_OPTIMIZER = False
+USE_PYTORCH_OPTIMIZER = True
 SHOW_PLOTS_INTERACTIVELY = False
 SAVE_PLOTS = False
 
